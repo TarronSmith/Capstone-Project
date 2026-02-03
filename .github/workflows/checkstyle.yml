@@ -26,7 +26,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Download the Checkstyle JAR
+      # Set up the environment
       - name: Download Checkstyle
         run: |
           mkdir -p tools
