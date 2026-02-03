@@ -8,7 +8,7 @@ The project emphasizes adaptive AI decision-making, agent-based simulation, and 
 
 ---
 
-## Project Goals
+## Project Goals 
 
 ### Primary Goals
 - Implement a complete market simulation with discrete **Buy Phases** and **Sell Phases**
