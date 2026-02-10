@@ -1,7 +1,7 @@
 ## 3/3 – 3/10
 - Set up LibGDX project structure
 
-  ### Core Models
+### Core Models
 - Implemented Item model
 - Implemented Customer model
 - Implemented Shop model
