@@ -1,204 +1,404 @@
 package com.tarron.marketsim.simulation;
 
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.tarron.marketsim.model.Item;
 import com.tarron.marketsim.model.Shop;
 
+/**
+ * RivalAI
+ *
+ * Purpose:
+ * - Stocks the rival shop during the BUY phase using demand observed in the previous round.
+ *
+ * Inputs:
+ * - lastDesiredByItemName: per-item "desired" counts from the previous round (RoundManager snapshot)
+ * - ItemCatalog: defines the available items and vendor costs
+ *
+ * Strategy:
+ * 1) If there is no demand history, buy a simple starter mix from the catalog.
+ * 2) Otherwise:
+ *    - "Exploration floor": buy 1 unit of each demanded item (if affordable)
+ *    - "Greedy fill": spend remaining cash on items that score well on demand share * (price/cost)
+ *
+ * Notes:
+ * - This AI optimizes stocking decisions, not sales decisions.
+ * - expectedRevenue is an optimistic proxy (assumes each bought unit sells at its full price).
+ */
 public class RivalAI {
 
-    public static class Result {
-        public final double remainingCash;
+	// Small epsilon to avoid floating point edge issues in budget checks.
+	private static final double EPS = 1e-9;
 
-        // Labels / ratios
-        public final String strategyLabel;
+	// Strategy labeling thresholds (based on cheap vs premium unit ratio).
+	private static final double PREMIUM_LEAN_THRESHOLD = 0.60;
+	private static final double CHEAP_LEAN_THRESHOLD = 0.40;
 
-        // From last round DESIRED
-        public final double demandPremiumRatio;
+	// ------------------------------------------------------------
+	// Result (returned to RoundManager / HUD)
+	// ------------------------------------------------------------
+	public static class Result {
+		public final double remainingCash;
 
-        // From what the AI actually bought
-        public final double stockPremiumRatio;
+		// Simple label describing the final mix (cheap vs premium leaning).
+		public final String strategyLabel;
 
-        // What the AI planned to buy (unit counts)
-        public final int plannedCheap;
-        public final int plannedPremium;
+		// Legacy demo ratios (tracked for HUD continuity).
+		public final double demandPremiumRatio;
+		public final double stockPremiumRatio;
 
-        // Expected revenue for this plan (based on last desired)
-        public final double expectedRevenue;
+		// Legacy demo planned counts (only counts the two demo anchor items).
+		public final int plannedCheap;
+		public final int plannedPremium;
 
-        public Result(
-                double remainingCash,
-                String strategyLabel,
-                double demandPremiumRatio,
-                double stockPremiumRatio,
-                int plannedCheap,
-                int plannedPremium,
-                double expectedRevenue
-        ) {
-            this.remainingCash = remainingCash;
-            this.strategyLabel = strategyLabel;
-            this.demandPremiumRatio = demandPremiumRatio;
-            this.stockPremiumRatio = stockPremiumRatio;
-            this.plannedCheap = plannedCheap;
-            this.plannedPremium = plannedPremium;
-            this.expectedRevenue = expectedRevenue;
-        }
-    }
+		// Optimistic estimate based on price of each planned unit.
+		public final double expectedRevenue;
 
-    private final double vendorCheapCost;
-    private final double vendorPremiumCost;
+		public Result(
+				double remainingCash,
+				String strategyLabel,
+				double demandPremiumRatio,
+				double stockPremiumRatio,
+				int plannedCheap,
+				int plannedPremium,
+				double expectedRevenue
+				) {
+			this.remainingCash = remainingCash;
+			this.strategyLabel = strategyLabel;
+			this.demandPremiumRatio = demandPremiumRatio;
+			this.stockPremiumRatio = stockPremiumRatio;
+			this.plannedCheap = plannedCheap;
+			this.plannedPremium = plannedPremium;
+			this.expectedRevenue = expectedRevenue;
+		}
+	}
 
-    public RivalAI(double vendorCheapCost, double vendorPremiumCost) {
-        this.vendorCheapCost = vendorCheapCost;
-        this.vendorPremiumCost = vendorPremiumCost;
-    }
+	public RivalAI(double vendorCheapCost, double vendorPremiumCost) {
+		// Kept for backwards compatibility with older constructors.
+		// Vendor costs are now read from ItemCatalog instead of stored per-type here.
+	}
 
-    public Result stockForBuyPhase(
-            Shop rivalShop,
-            double startingCash,
-            int lastDesiredCheap,
-            int lastDesiredPremium,
-            Item cheapItem,
-            Item premiumItem
-    ) {
-        rivalShop.clearInventory();
+	// ============================================================
+	// Public API
+	// ============================================================
 
-        int totalDesired = lastDesiredCheap + lastDesiredPremium;
-        if (totalDesired == 0) {
-            double cashLeft = buyStarterMix(rivalShop, startingCash, cheapItem, premiumItem);
+	/**
+	 * Stocks the rival shop for the BUY phase.
+	 *
+	 * Core output:
+	 * - Rival shop inventory is rebuilt from scratch (clears existing inventory first).
+	 * - Returns a Result summary for HUD/diagnostics.
+	 */
+	public Result stockForBuyPhase(
+			Shop rivalShop,
+			double startingCash,
+			Map<String, Integer> lastDesiredByItemName,
+			ItemCatalog catalog,
+			Item cheapItem,   
+			Item premiumItem    
+			) {
+		if (rivalShop == null) {
+			return new Result(startingCash, "EMPTY", 0.0, 0.0, 0, 0, 0.0);
+		}
 
-            // Starter mix: treat demand ratio as 0.0 since no knowledge
-            int cheapCount = rivalShop.getQuantity(cheapItem);
-            int premCount = rivalShop.getQuantity(premiumItem);
-            double stockPremRatio = ratio(premCount, cheapCount + premCount);
+		rivalShop.clearInventory();
 
-            String label = labelFromMix(cheapCount, premCount);
-            return new Result(
-                    cashLeft,
-                    "UNKNOWN (starter mix)",
-                    0.0,
-                    stockPremRatio,
-                    cheapCount,
-                    premCount,
-                    0.0
-            );
-        }
+		Map<String, Integer> demand = sanitizeDemand(lastDesiredByItemName);
+		int totalDemand = sumDemand(demand);
 
-        double demandPremiumRatio = lastDesiredPremium / (double) totalDesired;
+		Map<String, Item> nameToItem = buildNameToItem(catalog);
 
-        // Search best plan under budget to maximize expected revenue.
-        Plan best = findBestPlan(startingCash, lastDesiredCheap, lastDesiredPremium, cheapItem, premiumItem);
+		// No usable demand history: fallback to starter mix.
+		if (totalDemand <= 0 || nameToItem.isEmpty()) {
+			double cashLeft = buyCatalogStarterMix(rivalShop, startingCash, catalog);
 
-        // Apply plan to inventory
-        addN(rivalShop, cheapItem, best.cheapCount);
-        addN(rivalShop, premiumItem, best.premiumCount);
+			int cheapCount = (cheapItem == null) ? 0 : rivalShop.getQuantity(cheapItem);
+			int premCount  = (premiumItem == null) ? 0 : rivalShop.getQuantity(premiumItem);
 
-        double spent = best.cheapCount * vendorCheapCost + best.premiumCount * vendorPremiumCost;
-        double remaining = startingCash - spent;
+			double stockPremRatio = ratio(premCount, cheapCount + premCount);
 
-        double stockPremiumRatio = ratio(best.premiumCount, best.cheapCount + best.premiumCount);
+			return new Result(
+					cashLeft,
+					"UNKNOWN (catalog starter mix)",
+					0.0,
+					stockPremRatio,
+					cheapCount,
+					premCount,
+					0.0
+					);
+		}
 
-        String label = labelFromMix(best.cheapCount, best.premiumCount);
+		// Legacy metric: how much of demand was for the premium anchor item.
+		double demandPremiumRatio = computeDemandPremiumRatio(demand, premiumItem);
 
-        return new Result(
-                remaining,
-                label,
-                demandPremiumRatio,
-                stockPremiumRatio,
-                best.cheapCount,
-                best.premiumCount,
-                best.expectedRevenue
-        );
-    }
+		// Build a plan.
+		double cash = startingCash;
+		Map<String, Integer> planCounts = new HashMap<>();
+		double expectedRevenue = 0.0;
 
-    // -------------------- Internal helpers --------------------
+		// (1) Exploration floor: buy one of each demanded item if affordable.
+		for (Map.Entry<String, Integer> e : demand.entrySet()) {
+			String name = e.getKey();
+			int wanted = (e.getValue() == null) ? 0 : e.getValue();
+			if (wanted <= 0) continue;
 
-    private static class Plan {
-        int cheapCount;
-        int premiumCount;
-        double expectedRevenue;
+			Item it = nameToItem.get(name);
+			if (it == null) continue;
 
-        Plan(int cheapCount, int premiumCount, double expectedRevenue) {
-            this.cheapCount = cheapCount;
-            this.premiumCount = premiumCount;
-            this.expectedRevenue = expectedRevenue;
-        }
-    }
+			double cost = vendorCostSafe(catalog, it);
+			if (cost <= 0) continue;
 
-    private Plan findBestPlan(
-            double cash,
-            int desiredCheap,
-            int desiredPremium,
-            Item cheapItem,
-            Item premiumItem
-    ) {
-        int maxPremium = (int) Math.floor(cash / vendorPremiumCost);
-        Plan best = new Plan(0, 0, -1);
+			if (cash + EPS >= cost) {
+				buyOne(rivalShop, it);
+				inc(planCounts, name);
 
-        for (int p = 0; p <= maxPremium; p++) {
-            double cashLeft = cash - p * vendorPremiumCost;
-            int c = (int) Math.floor(cashLeft / vendorCheapCost);
+				cash -= cost;
+				expectedRevenue += it.getPrice();
 
-            int expectedPremiumSold = Math.min(p, desiredPremium);
-            int expectedCheapSold = Math.min(c, desiredCheap);
+				// Reduce remaining demand after covering one unit.
+				demand.put(name, Math.max(0, wanted - 1));
+				totalDemand = Math.max(0, totalDemand - 1);
+			}
+		}
 
-            double revenue = expectedPremiumSold * premiumItem.getPrice()
-                           + expectedCheapSold * cheapItem.getPrice();
+		// (2) Greedy fill: repeatedly buy the best-scoring demanded item while budget allows.
+		while (true) {
+			Pick best = pickBestAffordableItem(demand, totalDemand, cash, catalog, nameToItem);
+			if (best == null) break;
 
-            if (revenue > best.expectedRevenue) {
-                best = new Plan(c, p, revenue);
-            } else if (Math.abs(revenue - best.expectedRevenue) < 0.0001) {
-                int bestUnits = Math.min(best.premiumCount, desiredPremium) + Math.min(best.cheapCount, desiredCheap);
-                int units = expectedPremiumSold + expectedCheapSold;
+			buyOne(rivalShop, best.item);
+			inc(planCounts, best.name);
 
-                double bestSpent = best.cheapCount * vendorCheapCost + best.premiumCount * vendorPremiumCost;
-                double spent = c * vendorCheapCost + p * vendorPremiumCost;
+			cash -= best.cost;
+			expectedRevenue += best.item.getPrice();
 
-                if (units > bestUnits) best = new Plan(c, p, revenue);
-                else if (units == bestUnits && spent > bestSpent) best = new Plan(c, p, revenue);
-            }
-        }
+			int remaining = Math.max(0, demand.getOrDefault(best.name, 0) - 1);
+			demand.put(best.name, remaining);
+			totalDemand = Math.max(0, totalDemand - 1);
+		}
 
-        return best;
-    }
+		// Legacy planned counts (only for the two demo anchor items).
+		int plannedCheap   = (cheapItem == null) ? 0 : rivalShop.getQuantity(cheapItem);
+		int plannedPremium = (premiumItem == null) ? 0 : rivalShop.getQuantity(premiumItem);
 
-    private void addN(Shop shop, Item item, int count) {
-        if (count <= 0) return;
-        List<Item> items = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) items.add(item);
-        shop.addItems(items);
-    }
+		double stockPremiumRatio = ratio(plannedPremium, plannedCheap + plannedPremium);
+		String label = labelFromPremiumRatio(stockPremiumRatio);
 
-    private String labelFromMix(int cheapCount, int premiumCount) {
-        int total = cheapCount + premiumCount;
-        if (total == 0) return "EMPTY";
+		return new Result(
+				cash,
+				label,
+				demandPremiumRatio,
+				stockPremiumRatio,
+				plannedCheap,
+				plannedPremium,
+				expectedRevenue
+				);
+	}
 
-        double unitPremiumRatio = premiumCount / (double) total;
+	// ============================================================
+	// Planning helpers
+	// ============================================================
 
-        if (unitPremiumRatio > 0.60) return "PREMIUM-LEAN";
-        if (unitPremiumRatio < 0.40) return "CHEAP-LEAN";
-        return "BALANCED";
-    }
+	/**
+	 * Candidate chosen by greedy planner.
+	 */
+	private static class Pick {
+		final String name;
+		final Item item;
+		final double cost;
+		final double score;
 
-    private double ratio(int numerator, int denom) {
-        return (denom == 0) ? 0.0 : (numerator / (double) denom);
-    }
+		Pick(String name, Item item, double cost, double score) {
+			this.name = name;
+			this.item = item;
+			this.cost = cost;
+			this.score = score;
+		}
+	}
 
-    private double buyStarterMix(Shop rivalShop, double startingCash, Item cheapItem, Item premiumItem) {
-        double cash = startingCash;
-        boolean toggle = true;
+	/**
+	 * Selects the best affordable item under remaining demand.
+	 *
+	 * Score:
+	 * - demandShare = remainingDemand / totalDemand
+	 * - marginScore = price / vendorCost
+	 * - score = demandShare * marginScore
+	 */
+	private Pick pickBestAffordableItem(
+			Map<String, Integer> demand,
+			int totalDemand,
+			double cash,
+			ItemCatalog catalog,
+			Map<String, Item> nameToItem
+			) {
+		Item bestItem = null;
+		String bestName = null;
+		double bestScore = -1.0;
+		double bestCost = 0.0;
 
-        while (cash >= vendorCheapCost) {
-            if (toggle && cash >= vendorPremiumCost) {
-                cash -= vendorPremiumCost;
-                rivalShop.addItems(java.util.Arrays.asList(premiumItem));
-            } else {
-                cash -= vendorCheapCost;
-                rivalShop.addItems(java.util.Arrays.asList(cheapItem));
-            }
-            toggle = !toggle;
-        }
-        return cash;
-    }
+		for (Map.Entry<String, Integer> e : demand.entrySet()) {
+			String name = e.getKey();
+			int remainingDemand = (e.getValue() == null) ? 0 : e.getValue();
+			if (remainingDemand <= 0) continue;
+
+			Item it = nameToItem.get(name);
+			if (it == null) continue;
+
+			double cost = vendorCostSafe(catalog, it);
+			if (cost <= 0) continue;
+			if (cash + EPS < cost) continue;
+
+			double demandShare = (totalDemand <= 0) ? 0.0 : (remainingDemand / (double) totalDemand);
+			double marginScore = it.getPrice() / cost;
+			double score = demandShare * marginScore;
+
+			if (score > bestScore) {
+				bestScore = score;
+				bestItem = it;
+				bestName = name;
+				bestCost = cost;
+			}
+		}
+
+		if (bestItem == null) return null;
+		return new Pick(bestName, bestItem, bestCost, bestScore);
+	}
+
+	// ============================================================
+	// Demand sanitization / mapping
+	// ============================================================
+
+	/**
+	 * Filters null keys and non-positive counts.
+	 */
+	private Map<String, Integer> sanitizeDemand(Map<String, Integer> lastDesiredByItemName) {
+		Map<String, Integer> out = new HashMap<>();
+		if (lastDesiredByItemName == null) return out;
+
+		for (Map.Entry<String, Integer> e : lastDesiredByItemName.entrySet()) {
+			String name = e.getKey();
+			int v = (e.getValue() == null) ? 0 : e.getValue();
+			if (name != null && v > 0) out.put(name, v);
+		}
+		return out;
+	}
+
+	private int sumDemand(Map<String, Integer> demand) {
+		int total = 0;
+		for (Integer v : demand.values()) {
+			if (v != null && v > 0) total += v;
+		}
+		return total;
+	}
+
+	/**
+	 * Builds a lookup for catalog items by name.
+	 * The catalog item instances are the authoritative keys for vendor cost lookups.
+	 */
+	private Map<String, Item> buildNameToItem(ItemCatalog catalog) {
+		Map<String, Item> map = new HashMap<>();
+		if (catalog == null) return map;
+
+		List<Item> items = catalog.getItems();
+		if (items == null) return map;
+
+		for (Item it : items) {
+			if (it == null) continue;
+			String name = it.getName();
+			if (name == null) continue;
+			map.put(name, it);
+		}
+		return map;
+	}
+
+	/**
+	 * Legacy demand ratio: demand share for the premium anchor item name.
+	 */
+	private double computeDemandPremiumRatio(Map<String, Integer> demand, Item premiumItem) {
+		if (premiumItem == null || premiumItem.getName() == null) return 0.0;
+
+		int total = 0;
+		int prem = 0;
+
+		for (Map.Entry<String, Integer> e : demand.entrySet()) {
+			int v = (e.getValue() == null) ? 0 : e.getValue();
+			if (v <= 0) continue;
+			total += v;
+			if (premiumItem.getName().equals(e.getKey())) prem += v;
+		}
+
+		return (total == 0) ? 0.0 : (prem / (double) total);
+	}
+
+	// ============================================================
+	// Fallback stocking: starter mix
+	// ============================================================
+
+	/**
+	 * Buys items in catalog order until budget cannot afford the next cost.
+	 * This gives a deterministic "some of everything" baseline when no demand exists.
+	 */
+	private double buyCatalogStarterMix(Shop rivalShop, double startingCash, ItemCatalog catalog) {
+		if (rivalShop == null || catalog == null) return startingCash;
+
+		List<Item> items = catalog.getItems();
+		if (items == null || items.isEmpty()) return startingCash;
+
+		double cash = startingCash;
+		int i = 0;
+
+		while (true) {
+			Item it = items.get(i % items.size());
+			i++;
+
+			if (it == null) continue;
+
+			double cost = vendorCostSafe(catalog, it);
+			if (cost <= 0) continue;
+
+			if (cash + EPS < cost) break;
+
+			buyOne(rivalShop, it);
+			cash -= cost;
+		}
+
+		return cash;
+	}
+
+	// ============================================================
+	// Labeling / ratios
+	// ============================================================
+
+	private String labelFromPremiumRatio(double unitPremiumRatio) {
+		if (unitPremiumRatio > PREMIUM_LEAN_THRESHOLD) return "CATALOG-PREMIUM-LEAN";
+		if (unitPremiumRatio < CHEAP_LEAN_THRESHOLD) return "CATALOG-CHEAP-LEAN";
+		return "CATALOG-BALANCED";
+	}
+
+	private double ratio(int numerator, int denom) {
+		return (denom == 0) ? 0.0 : (numerator / (double) denom);
+	}
+
+	// ============================================================
+	// Small utilities
+	// ============================================================
+
+	private static void buyOne(Shop shop, Item item) {
+		shop.addItems(java.util.Arrays.asList(item));
+	}
+
+	private static void inc(Map<String, Integer> map, String key) {
+		map.put(key, map.getOrDefault(key, 0) + 1);
+	}
+
+	private static double vendorCostSafe(ItemCatalog catalog, Item it) {
+		if (catalog == null || it == null) return Double.POSITIVE_INFINITY;
+
+		double cost = catalog.getVendorCost(it);
+		if (Double.isInfinite(cost) || Double.isNaN(cost)) return Double.POSITIVE_INFINITY;
+
+		return cost;
+	}
 }

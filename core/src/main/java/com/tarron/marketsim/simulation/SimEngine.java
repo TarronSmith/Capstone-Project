@@ -11,29 +11,34 @@ import com.tarron.marketsim.model.Item;
 import com.tarron.marketsim.model.Shop;
 
 /**
- * Console-only simulation runner for debugging.
+ * SimEngine
  *
- * What it does:
- * - Runs multiple scenarios
- * - Logs per-customer: shop, wallet before/after, desired item, bought item
- * - Tracks DESIRED vs SOLD
- * - Runs sanity checks:
- *   * sold totals match shop sold totals
- *   * revenue matches price-weighted sold counts
- *   * customer spending sum matches revenue sum
- *   * inventory deltas match sold totals
+ * Purpose:
+ * - Console-only simulation runner for debugging and sanity checking.
+ *
+ * What it tests:
+ * - Customer desired vs. actual bought outcomes using the multi-item system
+ * - Inventory depletion correctness
+ * - Revenue/cash consistency
+ *
+ * Notes:
+ * - Uses a small fixed item set (CHEAP/PREMIUM) but routes through the current APIs:
+ *   DecisionLogic.pickFromList(...) and Shop.sell(customer, logic).
  */
 public class SimEngine {
 
-    // Config
+    // ============================================================
+    // Configuration
+    // ============================================================
+
     private static final long SEED = 1337L;
     private static final boolean VERBOSE_PER_CUSTOMER = true;
 
-    // Items
+    // Fixed item set for repeatable scenarios (multi-item API still used)
     private static final Item CHEAP = new Item("CheapItem", 3.0, 1);
     private static final Item PREMIUM = new Item("ExpensiveItem", 8.0, 5);
 
-    // Strategy strings 
+    // Spending archetypes
     private static final String TYPE_CHEAP = "Cheap Buyer";
     private static final String TYPE_VALUE = "Value Buyer";
     private static final String TYPE_CONSP = "Conspicuous Buyer";
@@ -55,9 +60,10 @@ public class SimEngine {
         System.out.println("=== Done ===");
     }
 
-    // ------------------------------------------------------------
-    // Scenario 1: Balanced stock and mixed customers
-    // ------------------------------------------------------------
+    // ============================================================
+    // Scenarios
+    // ============================================================
+
     private static void runScenarioBalancedStock(DecisionLogic logic) {
         System.out.println();
         System.out.println("--- Scenario: Balanced Stock + Mixed Customers ---");
@@ -85,9 +91,6 @@ public class SimEngine {
         runSellPhaseAndReport(player, rival, customers, logic);
     }
 
-    // ------------------------------------------------------------
-    // Scenario 2: Premium stockout stress test
-    // ------------------------------------------------------------
     private static void runScenarioPremiumStockout(DecisionLogic logic) {
         System.out.println();
         System.out.println("--- Scenario: Premium Stockout ---");
@@ -115,9 +118,6 @@ public class SimEngine {
         runSellPhaseAndReport(player, rival, customers, logic);
     }
 
-    // ------------------------------------------------------------
-    // Scenario 3: Everyone too poor
-    // ------------------------------------------------------------
     private static void runScenarioAllTooPoor(DecisionLogic logic) {
         System.out.println();
         System.out.println("--- Scenario: Everyone Too Poor ---");
@@ -142,9 +142,6 @@ public class SimEngine {
         runSellPhaseAndReport(player, rival, customers, logic);
     }
 
-    // ------------------------------------------------------------
-    // Scenario 4: Random market (repeatable with seed)
-    // ------------------------------------------------------------
     private static void runScenarioRandomMarket(DecisionLogic logic, Random rng, int numCustomers) {
         System.out.println();
         System.out.println("--- Scenario: Random Market (" + numCustomers + " customers) ---");
@@ -167,8 +164,9 @@ public class SimEngine {
     }
 
     // ============================================================
-    // Core runner: SELL phase with logs and sanity checks
+    // Core runner: executes a SELL phase and validates invariants
     // ============================================================
+
     private static void runSellPhaseAndReport(Shop player, Shop rival, List<Customer> customers, DecisionLogic logic) {
 
         player.resetTurnStats();
@@ -182,7 +180,7 @@ public class SimEngine {
 
         double sumCustomerSpent = 0.0;
 
-        // Inventory snapshots
+        // Inventory snapshots for delta checks
         int pStartCheap = player.getQuantity(CHEAP);
         int pStartPremium = player.getQuantity(PREMIUM);
         int rStartCheap = rival.getQuantity(CHEAP);
@@ -196,19 +194,20 @@ public class SimEngine {
         for (int i = 0; i < customers.size(); i++) {
             Customer c = customers.get(i);
 
+            // Deterministic assignment (alternating shops) to keep debugging stable
             Shop chosenShop = (i % 2 == 0) ? player : rival;
 
-            // DESIRED (ignores inventory)
-            Item desired = logic.iPick(c, CHEAP, PREMIUM);
+            // Desired: pick the best affordable item from what this shop currently offers
+            Item desired = logic.pickFromList(c, chosenShop.getItemsInStock());
             if (desired != null) {
                 if (sameItem(desired, CHEAP)) desiredCheap++;
                 else if (sameItem(desired, PREMIUM)) desiredPremium++;
             }
 
-            // SALE (affected by inventory)
-            double walletBefore = getWallet(c);
-            Item bought = chosenShop.sell(c, CHEAP, PREMIUM, logic);
-            double walletAfter = getWallet(c);
+            // Actual purchase: inventory + affordability constraints apply
+            double walletBefore = c.getWallet();
+            Item bought = chosenShop.sell(c, logic);
+            double walletAfter = c.getWallet();
 
             double spent = walletBefore - walletAfter;
             if (spent < 0) spent = 0.0;
@@ -222,12 +221,12 @@ public class SimEngine {
             if (VERBOSE_PER_CUSTOMER) {
                 System.out.println(
                         "C" + i
-                        + " shop=" + chosenShop.getName()
-                        + " walletBefore=$" + fmt2(walletBefore)
-                        + " walletAfter=$" + fmt2(walletAfter)
-                        + " spent=$" + fmt2(spent)
-                        + " desired=" + (desired == null ? "none" : desired.getName())
-                        + " bought=" + (bought == null ? "none" : bought.getName())
+                                + " shop=" + chosenShop.getName()
+                                + " walletBefore=$" + fmt2(walletBefore)
+                                + " walletAfter=$" + fmt2(walletAfter)
+                                + " spent=$" + fmt2(spent)
+                                + " desired=" + (desired == null ? "none" : desired.getName())
+                                + " bought=" + (bought == null ? "none" : bought.getName())
                 );
             }
         }
@@ -245,8 +244,8 @@ public class SimEngine {
         System.out.println("SOLD    cheap=" + soldCheap + " premium=" + soldPremium
                 + " totalSold=" + (soldCheap + soldPremium));
 
-        // ---------------- SANITY CHECKS ----------------
-        // Note: desiredTotal can be less than customers if iPick returns null (too poor).
+        // ---------------- Sanity checks ----------------
+
         int desiredTotal = desiredCheap + desiredPremium;
         if (desiredTotal > customers.size()) {
             throw new IllegalStateException("SANITY FAIL: desiredTotal > customers (double count).");
@@ -296,7 +295,7 @@ public class SimEngine {
 
     private static void stock(Shop shop, Item item, int qty) {
         if (qty <= 0) return;
-        List<Item> items = new ArrayList<>();
+        List<Item> items = new ArrayList<>(qty);
         for (int i = 0; i < qty; i++) items.add(item);
         shop.addItems(items);
     }
@@ -313,10 +312,6 @@ public class SimEngine {
                 + " revenueThisTurn=$" + fmt2(shop.getRevenueThisTurn())
                 + " remainingCheap=" + shop.getQuantity(CHEAP)
                 + " remainingPremium=" + shop.getQuantity(PREMIUM));
-    }
-
-    private static double getWallet(Customer c) {
-        return c.getWallet();
     }
 
     private static Customer randomCustomer(Random rng) {
