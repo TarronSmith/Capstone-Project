@@ -6,167 +6,159 @@ import java.util.List;
 import java.util.Random;
 
 import com.tarron.marketsim.model.Customer;
+import com.tarron.marketsim.model.CustomerProfile;
 
 /**
  * MarketPlan
  *
- * Responsibility:
- * - Defines the session-level population mix of customer archetypes.
- * - Produces the sequence of archetype "pair types" used to spawn customers each SELL phase.
- * - Generates customers with wallets sampled from archetype-specific distributions.
+ * Responsibilities:
+ * - Builds a session-level plan used to spawn customers each SELL phase.
+ * - Provides a stable sequence of "pair slots" (each slot spawns two customers).
+ * - Generates customers using:
+ *   - wallet sampled from a fixed market distribution
+ *   - profile produced by CustomerProfileGenerator
  *
  * Notes:
- * - The plan is generated once per reroll and then reused across rounds.
- * - The internal ordering of pair types is shuffled once per session, so the market composition
- *   is stable while still being varied between sessions.
- * - Spawning still uses "pair types" (each pair type produces two customers). Customers can
- *   still choose different shops during the SELL phase based on DecisionLogic.pickShop(...).
+ * - The plan is generated once per reroll and reused across rounds.
+ * - Customer counts are kept even to match the pair-based spawn model.
+ * - No archetypes or spending types are encoded here.
  */
 public class MarketPlan {
 
-    // Archetype labels (used throughout the project)
-    public static final String TYPE_CHEAP = "Cheap Buyer";
-    public static final String TYPE_VALUE = "Value Buyer";
-    public static final String TYPE_CONSP = "Conspicuous Buyer";
+	// Wallet distribution for the market. Keep aligned with catalog prices.
+	private static final double[] MARKET_WALLETS = {
+			0.0, 2.0, 3.0, 4.0, 5.0,
+			6.0, 8.0, 9.0, 10.0, 12.0, 15.0
+	};
 
-    // Wallet distributions for each archetype (session-deterministic draws)
-    private static final double[] CHEAP_WALLETS = { 0.0, 2.0, 3.0, 4.0, 4.0, 5.0 };
-    private static final double[] VALUE_WALLETS = { 6.0, 8.0, 9.0, 10.0, 10.0, 12.0 };
-    private static final double[] CONSP_WALLETS = { 8.0, 10.0, 12.0, 12.0, 15.0 };
+	private final int maxCustomers;
+	private final CustomerProfileGenerator profileGenerator;
 
-    // Target market mix (remaining share goes to Conspicuous)
-    private static final double SHARE_VALUE = 0.40;
-    private static final double SHARE_CHEAP = 0.30;
+	// Each entry represents a pair slot id. One slot spawns two customers.
+	private final List<Integer> pairSlots = new ArrayList<>();
 
-    private final int maxCustomers;
+	private boolean initialized = false;
 
-    // Each entry is a pair archetype; spawning uses two customers per entry.
-    private final List<String> marketPairPlan = new ArrayList<>();
+	private long sessionSeed = 0L;
+	private Random rng;
 
-    private boolean initialized = false;
+	public MarketPlan(int maxCustomers, CustomerProfileGenerator profileGenerator) {
+		this.maxCustomers = maxCustomers;
+		this.profileGenerator = profileGenerator;
+	}
 
-    // RNG for repeatable wallet sampling and plan shuffling per session
-    private long sessionSeed = 0L;
-    private Random rng = null;
+	// ============================================================
+	// Session planning
+	// ============================================================
 
-    public MarketPlan(int maxCustomers) {
-        this.maxCustomers = maxCustomers;
-    }
+	/** Reroll plan with a new seed. */
+	public void reroll() {
+		reroll(System.nanoTime());
+	}
 
-    /** Reroll the market plan for a new session (new plan + new deterministic wallet draws). */
-    public void reroll() {
-        reroll(System.nanoTime());
-    }
+	/** Reroll plan with an explicit seed (useful for debugging/replays). */
+	public void reroll(long seed) {
+		this.sessionSeed = seed;
+		this.rng = new Random(sessionSeed);
 
-    /** Reroll with an explicit seed (useful for debugging/replays). */
-    public void reroll(long seed) {
-        this.sessionSeed = seed;
-        this.rng = new Random(sessionSeed);
+		pairSlots.clear();
 
-        marketPairPlan.clear();
+		int maxPairs = Math.max(0, maxCustomers / 2);
+		for (int i = 0; i < maxPairs; i++) {
+			pairSlots.add(i);
+		}
 
-        int maxPairs = maxCustomers / 2;
+		Collections.shuffle(pairSlots, rng);
+		initialized = true;
+	}
 
-        int valuePairs = (int) Math.round(maxPairs * SHARE_VALUE);
-        int cheapPairs = (int) Math.round(maxPairs * SHARE_CHEAP);
-        int conspPairs = maxPairs - valuePairs - cheapPairs;
+	/** Ensures a plan exists before reading from it. */
+	public void ensureInitialized() {
+		if (!initialized) reroll();
+	}
 
-        for (int i = 0; i < cheapPairs; i++) marketPairPlan.add(TYPE_CHEAP);
-        for (int i = 0; i < valuePairs; i++) marketPairPlan.add(TYPE_VALUE);
-        for (int i = 0; i < conspPairs; i++) marketPairPlan.add(TYPE_CONSP);
+	// ============================================================
+	// Pair slot access
+	// ============================================================
 
-        Collections.shuffle(marketPairPlan, rng);
+	/**
+	 * Returns the pair slot ids needed for totalCustomers.
+	 * totalCustomers is forced even and clamped to maxCustomers.
+	 */
+	public List<Integer> getPairSlotsForCustomers(int totalCustomers) {
+		ensureInitialized();
 
-        initialized = true;
-    }
+		int evenCustomers = clampEvenToMax(totalCustomers);
+		int pairsNeeded = Math.min(evenCustomers / 2, pairSlots.size());
 
-    /** Ensure the market is initialized at least once. */
-    public void ensureInitialized() {
-        if (!initialized) reroll();
-    }
+		List<Integer> slice = new ArrayList<>(pairsNeeded);
+		for (int i = 0; i < pairsNeeded; i++) {
+			slice.add(pairSlots.get(i));
+		}
+		return slice;
+	}
 
-    /**
-     * Returns the archetype "pair types" needed for totalCustomers.
-     * totalCustomers is forced to even and clamped to maxCustomers.
-     */
-    public List<String> getPairTypesForCustomers(int totalCustomers) {
-        ensureInitialized();
+	/**
+	 * Returns counts for UI/debug.
+	 * No archetype mix; only totals.
+	 */
+	public MarketCounts getCountsForCustomers(int totalCustomers) {
+		ensureInitialized();
 
-        int evenCustomers = (totalCustomers % 2 == 0) ? totalCustomers : totalCustomers + 1;
-        evenCustomers = Math.min(evenCustomers, maxCustomers);
+		int evenCustomers = clampEvenToMax(totalCustomers);
+		int pairsNeeded = Math.min(evenCustomers / 2, pairSlots.size());
 
-        int pairsNeeded = evenCustomers / 2;
-        pairsNeeded = Math.min(pairsNeeded, marketPairPlan.size());
+		return new MarketCounts(evenCustomers, pairsNeeded);
+	}
 
-        List<String> slice = new ArrayList<>(pairsNeeded);
-        for (int i = 0; i < pairsNeeded; i++) {
-            slice.add(marketPairPlan.get(i));
-        }
-        return slice;
-    }
+	// ============================================================
+	// Customer creation
+	// ============================================================
 
-    /**
-     * Counts how many customers of each type will appear (counts customers, not pairs).
-     */
-    public MarketCounts getCountsForCustomers(int totalCustomers) {
-        ensureInitialized();
+	/**
+	 * Creates a Customer using:
+	 * - wallet sampled from MARKET_WALLETS
+	 * - profile produced by CustomerProfileGenerator (or null)
+	 */
+	public Customer makeCustomer() {
+		ensureInitialized();
 
-        int evenCustomers = (totalCustomers % 2 == 0) ? totalCustomers : totalCustomers + 1;
-        evenCustomers = Math.min(evenCustomers, maxCustomers);
+		double wallet = pickFrom(MARKET_WALLETS);
 
-        int pairsNeeded = evenCustomers / 2;
-        pairsNeeded = Math.min(pairsNeeded, marketPairPlan.size());
+		CustomerProfile profile =
+				(profileGenerator == null) ? null : profileGenerator.generate(rng);
 
-        int cheap = 0, value = 0, consp = 0;
-        for (int i = 0; i < pairsNeeded; i++) {
-            String type = marketPairPlan.get(i);
-            if (TYPE_CHEAP.equals(type)) cheap += 2;
-            else if (TYPE_VALUE.equals(type)) value += 2;
-            else consp += 2;
-        }
-        return new MarketCounts(cheap, value, consp);
-    }
+		return new Customer(wallet, profile);
+	}
 
-    /**
-     * Creates a Customer using:
-     * - the archetype type string (Cheap/Value/Conspicuous)
-     * - a wallet sampled from that archetype's wallet distribution
-     */
-    public Customer makeCustomerFromType(String type) {
-        ensureInitialized();
+	/** Exposes the session seed for debugging/replays. */
+	public long getSessionSeed() {
+		ensureInitialized();
+		return sessionSeed;
+	}
 
-        double wallet;
-        if (TYPE_CHEAP.equals(type)) wallet = pickFrom(CHEAP_WALLETS);
-        else if (TYPE_VALUE.equals(type)) wallet = pickFrom(VALUE_WALLETS);
-        else wallet = pickFrom(CONSP_WALLETS);
+	// ============================================================
+	// Internals
+	// ============================================================
 
-        return new Customer(type, wallet);
-    }
+	private int clampEvenToMax(int totalCustomers) {
+		int even = (totalCustomers % 2 == 0) ? totalCustomers : totalCustomers + 1;
+		if (even < 0) even = 0;
+		return Math.min(even, maxCustomers);
+	}
 
-    /** Exposes the session seed for debugging/replays. */
-    public long getSessionSeed() {
-        ensureInitialized();
-        return sessionSeed;
-    }
+	private double pickFrom(double[] options) {
+		if (options == null || options.length == 0) return 0.0;
+		return options[rng.nextInt(options.length)];
+	}
 
-    // ============================================================
-    // Internals
-    // ============================================================
+	public static class MarketCounts {
+		public final int totalCustomers;
+		public final int totalPairs;
 
-    private double pickFrom(double[] options) {
-        return options[rng.nextInt(options.length)];
-    }
-
-    /** Simple value object for counts. */
-    public static class MarketCounts {
-        public final int cheapCount;
-        public final int valueCount;
-        public final int conspCount;
-
-        public MarketCounts(int cheapCount, int valueCount, int conspCount) {
-            this.cheapCount = cheapCount;
-            this.valueCount = valueCount;
-            this.conspCount = conspCount;
-        }
-    }
+		public MarketCounts(int totalCustomers, int totalPairs) {
+			this.totalCustomers = totalCustomers;
+			this.totalPairs = totalPairs;
+		}
+	}
 }

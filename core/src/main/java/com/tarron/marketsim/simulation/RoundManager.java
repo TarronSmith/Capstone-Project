@@ -9,138 +9,218 @@ import com.tarron.marketsim.model.Shop;
 /**
  * RoundManager
  *
- * Purpose:
- * - Owns round/phase state (BUY -> SELL -> RESULTS -> BUY).
- * - Owns cash state for player and rival (resets each round to startingCash).
- * - Tracks per-round market signals:
- *   - "Desired" counts: what customers wanted (independent of stockouts).
- *   - "Sold" counts: what customers actually purchased (stock constrained).
- *
- * Tracking is done in two layers:
- * 1) Legacy demo counters: cheap vs premium (kept for compatibility with older HUD/AI displays).
- * 2) Current counters: per-item counts keyed by item name (drives updated HUD + multi-item RivalAI).
+ * Responsibilities:
+ * - Owns phase state (BUY, SELL, RESULTS) and phase transitions.
+ * - Tracks session cash for player and rival.
+ * - Tracks per-round desired/sold counts by item name and snapshots them for the next round.
+ * - Stores RivalAI summary data for HUD/debug.
+ * - Tracks round number and determines outcome when the final round completes.
  *
  * Notes:
- * - Desired/Sold maps are snapshot at the end of RESULTS into last* maps so RivalAI can plan the next BUY phase.
- * - RoundManager does not simulate customer behavior; MarketEngine drives increments during SELL.
+ * - Counters are keyed by item name to remain compatible with any catalog size.
+ * - Revenue is applied to cash when leaving RESULTS (before resetting shop stats).
  */
 public class RoundManager {
 
-    // ============================================================
-    // Phase
-    // ============================================================
-
-    public enum Phase { BUY, SELL, RESULTS }
+    public enum Phase {BUY, SELL, RESULTS}
+    public enum Outcome {NONE, WIN, LOSS, TIE}
 
     private Phase phase = Phase.BUY;
 
-    // ============================================================
-    // Cash rules
-    // ============================================================
-
-    private final double startingCash;
     private double playerCash;
     private double rivalCash;
 
-    // If true, clears the player's inventory at the start of each BUY phase (after RESULTS).
-    private final boolean clearPlayerInventoryEachRound;
+    private int roundNumber = 1;   // 1-based
+    private int maxRounds;
 
-    // ============================================================
-    // Legacy demo tracking (cheap vs premium)
-    // ============================================================
+    private boolean gameOver = false;
+    private Outcome outcome = Outcome.NONE;
 
-    private int lastDesiredCheap = 0;
-    private int lastDesiredPremium = 0;
+    // Rival AI summary (HUD/debug)
+    private String rivalStrategyLabel = "UNKNOWN";
+    private double lastExpectedRevenue = 0.0;
+    private final Map<String, Integer> lastRivalPlannedByItemName = new HashMap<>();
 
-    private int currentDesiredCheap = 0;
-    private int currentDesiredPremium = 0;
-
-    private int currentSoldCheap = 0;
-    private int currentSoldPremium = 0;
-
-    // ============================================================
-    // Current tracking (per item name)
-    // ============================================================
-
+    // Current round counters
     private final Map<String, Integer> currentDesiredByItemName = new HashMap<>();
     private final Map<String, Integer> currentSoldByItemName = new HashMap<>();
 
+    // Snapshot from the last completed SELL round
     private final Map<String, Integer> lastDesiredByItemName = new HashMap<>();
     private final Map<String, Integer> lastSoldByItemName = new HashMap<>();
 
-    // ============================================================
-    // Rival AI summary (for HUD)
-    // ============================================================
+    public RoundManager(double startingCash) {
+        this(startingCash, 10);
+    }
 
-    private String rivalStrategyLabel = "UNKNOWN (starter mix)";
-
-    // Legacy ratios retained for HUD continuity.
-    private double lastDemandPremiumRatio = 0.0;
-    private double lastStockPremiumRatio = 0.0;
-
-    // Legacy planned counts retained for HUD continuity.
-    private int lastPlannedCheap = 0;
-    private int lastPlannedPremium = 0;
-
-    // Optimistic estimate of revenue implied by rival plan (AI-produced).
-    private double lastExpectedRevenue = 0.0;
-
-    // ============================================================
-    // Construction
-    // ============================================================
-
-    public RoundManager(double startingCash, boolean clearPlayerInventoryEachRound) {
-        this.startingCash = startingCash;
-        this.clearPlayerInventoryEachRound = clearPlayerInventoryEachRound;
-
+    public RoundManager(double startingCash, int maxRounds) {
         this.playerCash = startingCash;
         this.rivalCash = startingCash;
+        this.maxRounds = Math.max(1, maxRounds);
     }
 
     // ============================================================
-    // Phase access
+    // Game loop state
+    // ============================================================
+
+    public int getRoundNumber() { return roundNumber; }
+    public int getMaxRounds() { return maxRounds; }
+
+    public void setMaxRounds(int maxRounds) {
+        if (maxRounds < 1) return;
+        this.maxRounds = maxRounds;
+        if (roundNumber > this.maxRounds) roundNumber = this.maxRounds;
+    }
+
+    public boolean isGameOver() { return gameOver; }
+    public Outcome getOutcome() { return outcome; }
+
+    // ============================================================
+    // Reset
+    // ============================================================
+
+    public void hardReset(Shop playerShop, Shop rivalShop, boolean wipeKnowledge) {
+        phase = Phase.BUY;
+
+        roundNumber = 1;
+        gameOver = false;
+        outcome = Outcome.NONE;
+
+        if (playerShop != null) playerShop.resetTurnStats();
+        if (rivalShop != null) rivalShop.resetTurnStats();
+
+        currentDesiredByItemName.clear();
+        currentSoldByItemName.clear();
+
+        if (wipeKnowledge) {
+            lastDesiredByItemName.clear();
+            lastSoldByItemName.clear();
+
+            rivalStrategyLabel = "UNKNOWN";
+            lastExpectedRevenue = 0.0;
+            lastRivalPlannedByItemName.clear();
+        }
+    }
+
+    // ============================================================
+    // Phase transitions
+    // ============================================================
+
+    public void beginSellPhase(Shop playerShop, Shop rivalShop) {
+        if (gameOver) return;
+
+        phase = Phase.SELL;
+
+        if (playerShop != null) playerShop.resetTurnStats();
+        if (rivalShop != null) rivalShop.resetTurnStats();
+
+        currentDesiredByItemName.clear();
+        currentSoldByItemName.clear();
+    }
+
+    public void setResultsPhase() {
+        if (gameOver) return;
+        phase = Phase.RESULTS;
+    }
+
+    /**
+     * Advances from RESULTS to either:
+     * - game over (after final round), or
+     * - next BUY round
+     *
+     * Order:
+     * 1) Apply revenue to cash
+     * 2) Snapshot current maps to last maps
+     * 3) Clear current maps
+     * 4) Reset shop stats
+     * 5) End game or increment round and return to BUY
+     */
+    public void advanceAfterResults(Shop playerShop, Shop rivalShop) {
+        if (gameOver) return;
+        if (phase != Phase.RESULTS) return;
+
+        // 1) Transfer revenue into cash
+        if (playerShop != null) playerCash += playerShop.getRevenueThisTurn();
+        if (rivalShop != null)  rivalCash  += rivalShop.getRevenueThisTurn();
+
+        // 2) Snapshot current counters
+        lastDesiredByItemName.clear();
+        lastDesiredByItemName.putAll(currentDesiredByItemName);
+
+        lastSoldByItemName.clear();
+        lastSoldByItemName.putAll(currentSoldByItemName);
+
+        // 3) Clear current counters
+        currentDesiredByItemName.clear();
+        currentSoldByItemName.clear();
+
+        // 4) Reset shop stats
+        if (playerShop != null) playerShop.resetTurnStats();
+        if (rivalShop != null)  rivalShop.resetTurnStats();
+
+        // 5) Final round check
+        if (roundNumber >= maxRounds) {
+            gameOver = true;
+            outcome = computeOutcome(playerCash, rivalCash);
+            return;
+        }
+
+        // 6) Next BUY
+        roundNumber++;
+        phase = Phase.BUY;
+    }
+
+    private Outcome computeOutcome(double playerCash, double rivalCash) {
+        double diff = playerCash - rivalCash;
+        if (Math.abs(diff) < 1e-9) return Outcome.TIE;
+        return (diff > 0) ? Outcome.WIN : Outcome.LOSS;
+    }
+
+    // ============================================================
+    // Counting
+    // ============================================================
+
+    public void incDesiredItem(String itemName) {
+        if (itemName == null) return;
+        currentDesiredByItemName.put(itemName, currentDesiredByItemName.getOrDefault(itemName, 0) + 1);
+    }
+
+    public void incSoldItem(String itemName) {
+        if (itemName == null) return;
+        currentSoldByItemName.put(itemName, currentSoldByItemName.getOrDefault(itemName, 0) + 1);
+    }
+
+    // ============================================================
+    // Rival AI integration
+    // ============================================================
+
+    public void applyRivalAIResult(RivalAI.Result res) {
+        if (res == null) return;
+
+        rivalCash = res.remainingCash;
+        rivalStrategyLabel = (res.strategyLabel == null) ? "UNKNOWN" : res.strategyLabel;
+        lastExpectedRevenue = res.expectedRevenue;
+
+        lastRivalPlannedByItemName.clear();
+        if (res.plannedByItemName != null) {
+            lastRivalPlannedByItemName.putAll(res.plannedByItemName);
+        }
+    }
+
+    // ============================================================
+    // Getters / setters
     // ============================================================
 
     public Phase getPhase() { return phase; }
 
-    // ============================================================
-    // Cash access
-    // ============================================================
-
     public double getPlayerCash() { return playerCash; }
+    public void setPlayerCash(double v) { playerCash = v; }
+
     public double getRivalCash() { return rivalCash; }
-
-    public void setPlayerCash(double cash) { this.playerCash = cash; }
-    public void setRivalCash(double cash) { this.rivalCash = cash; }
-
-    // ============================================================
-    // Rival AI summary access
-    // ============================================================
+    public void setRivalCash(double v) { rivalCash = v; }
 
     public String getRivalStrategyLabel() { return rivalStrategyLabel; }
-    public double getLastDemandPremiumRatio() { return lastDemandPremiumRatio; }
-    public double getLastStockPremiumRatio() { return lastStockPremiumRatio; }
-
-    public int getLastPlannedCheap() { return lastPlannedCheap; }
-    public int getLastPlannedPremium() { return lastPlannedPremium; }
     public double getLastExpectedRevenue() { return lastExpectedRevenue; }
-
-    // ============================================================
-    // Legacy demo counters access
-    // ============================================================
-
-    public int getLastDesiredCheap() { return lastDesiredCheap; }
-    public int getLastDesiredPremium() { return lastDesiredPremium; }
-
-    public int getCurrentDesiredCheap() { return currentDesiredCheap; }
-    public int getCurrentDesiredPremium() { return currentDesiredPremium; }
-
-    public int getCurrentSoldCheap() { return currentSoldCheap; }
-    public int getCurrentSoldPremium() { return currentSoldPremium; }
-
-    // ============================================================
-    // Per-item counters access (HUD + RivalAI use these)
-    // ============================================================
 
     public Map<String, Integer> getCurrentDesiredByItemName() {
         return Collections.unmodifiableMap(currentDesiredByItemName);
@@ -158,169 +238,7 @@ public class RoundManager {
         return Collections.unmodifiableMap(lastSoldByItemName);
     }
 
-    // ============================================================
-    // Increment helpers (MarketEngine calls these during SELL)
-    // ============================================================
-
-    // --- Legacy demo increments ---
-    public void incDesiredCheap() { currentDesiredCheap++; }
-    public void incDesiredPremium() { currentDesiredPremium++; }
-    public void incSoldCheap() { currentSoldCheap++; }
-    public void incSoldPremium() { currentSoldPremium++; }
-
-    // --- Per-item increments ---
-    public void incDesiredItem(String itemName) {
-        if (itemName == null) return;
-        currentDesiredByItemName.put(itemName, currentDesiredByItemName.getOrDefault(itemName, 0) + 1);
-    }
-
-    public void incSoldItem(String itemName) {
-        if (itemName == null) return;
-        currentSoldByItemName.put(itemName, currentSoldByItemName.getOrDefault(itemName, 0) + 1);
-    }
-
-    // ============================================================
-    // Phase transitions
-    // ============================================================
-
-    /**
-     * BUY -> SELL transition.
-     * Resets per-turn stats and clears current round counters.
-     */
-    public void beginSellPhase(Shop playerShop, Shop rivalShop) {
-        playerShop.resetTurnStats();
-        rivalShop.resetTurnStats();
-
-        // Reset legacy counters.
-        currentDesiredCheap = 0;
-        currentDesiredPremium = 0;
-        currentSoldCheap = 0;
-        currentSoldPremium = 0;
-
-        // Reset per-item counters.
-        currentDesiredByItemName.clear();
-        currentSoldByItemName.clear();
-
-        phase = Phase.SELL;
-    }
-
-    /**
-     * SELL -> RESULTS transition.
-     * MarketEngine triggers this when all customers have arrived.
-     */
-    public void setResultsPhase() {
-        phase = Phase.RESULTS;
-    }
-
-    /**
-     * RESULTS -> BUY transition.
-     *
-     * Responsibilities:
-     * - Snapshots "current" desired/sold into "last" for the next round's RivalAI planning.
-     * - Resets cash back to startingCash.
-     * - Applies inventory policy for the next round.
-     */
-    public void startNextBuyPhase(Shop playerShop, Shop rivalShop) {
-        // Snapshot legacy desired.
-        lastDesiredCheap = currentDesiredCheap;
-        lastDesiredPremium = currentDesiredPremium;
-
-        int total = lastDesiredCheap + lastDesiredPremium;
-        lastDemandPremiumRatio = (total == 0) ? 0.0 : (lastDesiredPremium / (double) total);
-
-        // Snapshot per-item maps.
-        lastDesiredByItemName.clear();
-        lastDesiredByItemName.putAll(currentDesiredByItemName);
-
-        lastSoldByItemName.clear();
-        lastSoldByItemName.putAll(currentSoldByItemName);
-
-        // Reset cash for the new BUY phase.
-        playerCash = startingCash;
-        rivalCash = startingCash;
-
-        // Inventory policy for the new round.
-        if (clearPlayerInventoryEachRound) {
-            playerShop.clearInventory();
-        }
-        rivalShop.clearInventory();
-
-        phase = Phase.BUY;
-    }
-
-    // ============================================================
-    // Rival AI integration
-    // ============================================================
-
-    /**
-     * Copies RivalAI result fields into RoundManager so HUD can display them.
-     * RivalAI is responsible for actually stocking rivalShop.
-     */
-    public void applyRivalAIResult(RivalAI.Result res) {
-        if (res == null) return;
-
-        rivalCash = res.remainingCash;
-        rivalStrategyLabel = res.strategyLabel;
-
-        lastDemandPremiumRatio = res.demandPremiumRatio;
-        lastStockPremiumRatio = res.stockPremiumRatio;
-
-        lastPlannedCheap = res.plannedCheap;
-        lastPlannedPremium = res.plannedPremium;
-
-        lastExpectedRevenue = res.expectedRevenue;
-    }
-
-    // ============================================================
-    // Reset
-    // ============================================================
-
-    /**
-     * Hard reset for restarting a session.
-     *
-     * wipeKnowledge:
-     * - true: clears last-round knowledge (demand history, AI label, ratios)
-     * - false: keeps last-round maps/counters intact (useful for some debugging flows)
-     */
-    public void hardReset(Shop playerShop, Shop rivalShop, boolean wipeKnowledge) {
-        playerShop.resetTurnStats();
-        rivalShop.resetTurnStats();
-
-        playerShop.clearInventory();
-        rivalShop.clearInventory();
-
-        playerCash = startingCash;
-        rivalCash = startingCash;
-
-        // Clear current round counters.
-        currentDesiredCheap = 0;
-        currentDesiredPremium = 0;
-        currentSoldCheap = 0;
-        currentSoldPremium = 0;
-
-        currentDesiredByItemName.clear();
-        currentSoldByItemName.clear();
-
-        if (wipeKnowledge) {
-            // Clear last-round legacy counters.
-            lastDesiredCheap = 0;
-            lastDesiredPremium = 0;
-
-            // Clear last-round per-item maps.
-            lastDesiredByItemName.clear();
-            lastSoldByItemName.clear();
-
-            // Clear rival AI display fields.
-            lastDemandPremiumRatio = 0.0;
-            lastStockPremiumRatio = 0.0;
-
-            lastPlannedCheap = 0;
-            lastPlannedPremium = 0;
-            lastExpectedRevenue = 0.0;
-
-            rivalStrategyLabel = "UNKNOWN (starter mix)";
-        }
-
-        phase = Phase.BUY;
+    public Map<String, Integer> getLastRivalPlannedByItemName() {
+        return Collections.unmodifiableMap(lastRivalPlannedByItemName);
     }
 }

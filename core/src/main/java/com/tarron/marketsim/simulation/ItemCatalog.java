@@ -11,85 +11,87 @@ import com.tarron.marketsim.model.Item;
 /**
  * ItemCatalog
  *
- * Responsibility:
- * - Defines the global set of items available in the market.
- * - Stores vendor acquisition cost for each item.
+ * Responsibilities:
+ * - Defines the fixed set of items available in the market.
+ * - Stores vendor acquisition cost per item.
+ * - Provides ordered access for UI display and slot-based purchasing.
  *
- * Notes:
- * - Items are created once at initialization and treated as immutable.
- * - Vendor cost is maintained separately from Item (price is customer-facing).
- * - The catalog acts as the authoritative source for:
- *      Catalog display order
- *      Slot-based purchasing
- *      Vendor cost lookup
+ * Design:
+ * - Items are created once during initialization.
+ * - Sale price lives on Item; vendor cost is stored separately.
+ * - Catalog order determines BUY phase slot mapping (1..N).
  */
 public class ItemCatalog {
 
-    // Ordered list used for UI display and slot selection (1..N)
-    private final List<Item> items = new ArrayList<>();
+	// ============================================================
+	// Catalog storage
+	// ============================================================
 
-    // Vendor acquisition cost per item instance
-    private final Map<Item, Double> vendorCost = new HashMap<>();
+	/** Ordered list used for display and slot lookup. */
+	private final List<Item> items = new ArrayList<>();
 
-    /**
-     * Initializes the fixed catalog.
-     *
-     * Balance considerations:
-     * - Prices should fit within typical customer wallet ranges.
-     * - Quality increases roughly with price.
-     * - Vendor cost should remain below sale price to allow margin.
-     */
-    public ItemCatalog() {
-        add("Bargain",        2.0, 0, 1.2);
-        add("CheapItem",      3.0, 1, 2.0);
-        add("Decent",         5.0, 3, 3.2);
-        add("Quality",        6.5, 4, 4.2);
-        add("ExpensiveItem",  8.0, 5, 5.0);
-        add("Luxury",        12.0, 7, 8.0);
-    }
+	/** Vendor acquisition cost per item instance. */
+	private final Map<Item, Double> vendorCost = new HashMap<>();
 
-    /**
-     * Creates a catalog item and registers its vendor cost.
-     * Called only during initialization.
-     */
-    private void add(String name, double price, int quality, double cost) {
-        Item item = new Item(name, price, quality);
-        items.add(item);
-        vendorCost.put(item, cost);
-    }
+	// ============================================================
+	// Initialization
+	// ============================================================
 
-    // ============================================================
-    // Accessors
-    // ============================================================
+	/**
+	 * Builds the fixed catalog.
+	 *
+	 * Guidelines:
+	 * - Price should align with typical customer wallet ranges.
+	 * - Quality should scale roughly with price.
+	 * - Vendor cost must remain below sale price to allow margin.
+	 */
+	public ItemCatalog() {
+		add("Bargain",       2.0, 0, 1.2);
+		add("CheapItem",     3.0, 1, 2.0);
+		add("Decent",        5.0, 3, 3.2);
+		add("Quality",       6.5, 4, 4.2);
+		add("ExpensiveItem", 8.0, 5, 5.0);
+		add("Luxury",       12.0, 7, 8.0);
+	}
 
-    /**
-     * Returns catalog items in fixed display order.
-     * The returned list is read-only.
-     */
-    public List<Item> getItems() {
-        return Collections.unmodifiableList(items);
-    }
+	/**
+	 * Registers a new catalog item and its vendor cost.
+	 * Intended for use only during construction.
+	 */
+	private void add(String name, double price, int quality, double cost) {
+		Item item = new Item(name, price, quality);
+		items.add(item);
+		vendorCost.put(item, cost);
+	}
 
-    /**
-     * Returns vendor acquisition cost for a catalog item.
-     * Returns +Infinity if the item is not recognized.
-     */
-    public double getVendorCost(Item item) {
-        if (item == null) return Double.POSITIVE_INFINITY;
-        return vendorCost.getOrDefault(item, Double.POSITIVE_INFINITY);
-    }
+	// ============================================================
+	// Getters
+	// ============================================================
 
-    /**
-     * Slot lookup (1-based).
-     *
-     * Used by BUY phase input:
-     *   Key '1' -> slot 1 -> first catalog item
-     *
-     * Returns null if slot is out of range.
-     */
-    public Item getBySlot(int slot1Based) {
-        int index = slot1Based - 1;
-        if (index < 0 || index >= items.size()) return null;
-        return items.get(index);
-    }
+	/**
+	 * Returns catalog items in fixed display order.
+	 * The returned list is unmodifiable.
+	 */
+	public List<Item> getItems() {
+		return Collections.unmodifiableList(items);
+	}
+
+	/**
+	 * Returns vendor acquisition cost for the given item.
+	 * Returns positive infinity if the item is not part of the catalog.
+	 */
+	public double getVendorCost(Item item) {
+		if (item == null) return Double.POSITIVE_INFINITY;
+		return vendorCost.getOrDefault(item, Double.POSITIVE_INFINITY);
+	}
+
+	/**
+	 * Slot lookup using 1-based indexing.
+	 * Returns null if the slot is out of range.
+	 */
+	public Item getBySlot(int slot1Based) {
+		int index = slot1Based - 1;
+		if (index < 0 || index >= items.size()) return null;
+		return items.get(index);
+	}
 }
