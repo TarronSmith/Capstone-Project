@@ -3,64 +3,70 @@ package com.tarron.marketsim.model;
 /**
  * CustomerProfile
  *
- * Purpose:
- * - Defines behavioral weight parameters used by decision models.
- * - Separates customer psychology from decision algorithms.
+ * Responsibilities:
+ * - Immutable behavioral weight container used by DecisionLogic.
+ * - Encapsulates how a customer values price, quality, hype, loyalty, and stockout risk.
  *
- * Usage:
- * - Attached to each Customer instance.
- * - Read by DecisionLogic when evaluating items and shop choice.
- *
- * Notes:
- * - All values are relative weights (typically 0.0–1.0).
- * - Higher values increase the influence of that factor on decisions.
+ * Design:
+ * - Pure data object (no logic).
+ * - Stored on Customer and read during item scoring and shop selection.
+ * - Profile generation is handled externally (e.g., CustomerProfileGenerator).
  */
 public class CustomerProfile {
 
+	// ============================================================
+	// Item evaluation weights
+	// ============================================================
+
 	/**
-	 * Sensitivity to price.
-	 * Higher values increase preference for lower-priced items.
+	 * Influence of price when scoring items.
+	 * Higher values increase sensitivity to price differences.
 	 */
 	public final double priceSensitivity;
 
 	/**
-	 * Sensitivity to quality.
+	 * Influence of quality when scoring items.
 	 * Higher values increase preference for higher-quality items.
 	 */
 	public final double qualitySensitivity;
 
 	/**
-	 * Preference for expensive items as a status signal.
-	 * Influences conspicuous consumption behavior.
+	 * Influence of hype when scoring items.
+	 * Higher values increase the effect of hype in decision scoring.
 	 */
-	public final double prestigeBias;
+	public final double hypeBias;
+
+	// ============================================================
+	// Shop selection biases (cross-round behavior)
+	// ============================================================
 
 	/**
 	 * Tendency to revisit the same shop across rounds.
-	 * Used as a positive modifier in shop selection.
+	 * Higher values increase loyalty influence.
 	 */
-	public final double loyalty;
+	public final double loyaltyBias;
 
 	/**
-	 * Tendency to avoid shops where the desired item was unavailable.
-	 * Used as a negative modifier in shop selection.
+	 * Tendency to avoid shops where desired items were unavailable.
+	 * Higher values increase penalty for prior stockouts.
 	 */
 	public final double stockoutAversion;
 
-	/**
-	 * Immutable behavioral parameter set.
-	 */
+	// ============================================================
+	// Construction
+	// ============================================================
+
 	public CustomerProfile(
 			double priceSensitivity,
 			double qualitySensitivity,
-			double prestigeBias,
-			double loyalty,
+			double hypeBias,
+			double loyaltyBias,
 			double stockoutAversion
 			) {
 		this.priceSensitivity = priceSensitivity;
 		this.qualitySensitivity = qualitySensitivity;
-		this.prestigeBias = prestigeBias;
-		this.loyalty = loyalty;
+		this.hypeBias = hypeBias;
+		this.loyaltyBias = loyaltyBias;
 		this.stockoutAversion = stockoutAversion;
 	}
 }

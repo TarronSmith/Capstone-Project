@@ -2,6 +2,7 @@ package com.tarron.marketsim.simulation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.tarron.marketsim.model.Customer;
 import com.tarron.marketsim.model.DecisionLogic;
@@ -10,44 +11,40 @@ import com.tarron.marketsim.model.Shop;
 /**
  * CustomerSpawner
  *
- * Responsibility:
- * - Creates VisualCustomer instances for a SELL phase.
- * - Assigns each customer a destination shop (targetShop) and movement target (targetX/targetY).
+ * Responsibilities:
+ * - Builds the SELL-phase crowd as VisualCustomer objects.
+ * - Assigns each customer a target shop using DecisionLogic.
+ * - Assigns movement targets inside the chosen shop rectangle.
  *
  * Notes:
- * - Handles visual spawning and movement only.
- * - Purchases and memory writeback are handled by MarketEngine when customers arrive.
- *
- * Spawn modes:
- * - spawnFairCustomersFromPlan: deterministic 50/50 split (legacy/demo baseline)
- * - spawnCustomersFromPlanWithShopChoice: customers choose a shop via DecisionLogic.pickShop(...)
+ * - Movement and per-customer UI fields live on VisualCustomer.
+ * - Transactions and customer memory updates are handled by MarketEngine on arrival.
  */
 public class CustomerSpawner {
 
 	// ============================================================
-	// VisualCustomer: simulation model + movement + UI log fields
+	// VisualCustomer
 	// ============================================================
 
 	/**
-	 * Represents a single on-screen customer during a SELL phase.
-	 *
-	 * Fields:
-	 * - model/targetShop are the simulation references
-	 * - x/y and targetX/targetY define movement
-	 * - walletBefore/After/spent/boughtName/purchaseResult are filled in by MarketEngine
+	 * Bundles:
+	 * - Customer model reference
+	 * - Movement state
+	 * - Target shop selection
+	 * - UI log fields populated after arrival
 	 */
 	public static class VisualCustomer {
 		public Customer model;
 		public Shop targetShop;
 
-		// Filled after arrival by MarketEngine.processArrivedCustomer(...)
-		public double walletBefore = 0;
-		public double walletAfter = 0;
-		public double spent = 0;
+		// Set by MarketEngine after arrival
+		public double walletBefore = 0.0;
+		public double walletAfter = 0.0;
+		public double spent = 0.0;
 		public String boughtName = null;
 		public String purchaseResult = null;
 
-		// Movement state
+		// Movement
 		public float x, y;
 		public float targetX, targetY;
 
@@ -60,12 +57,7 @@ public class CustomerSpawner {
 			this.y = y;
 		}
 
-		public VisualCustomer(
-				Customer model,
-				float x, float y,
-				float targetX, float targetY,
-				Shop targetShop
-				) {
+		public VisualCustomer(Customer model, float x, float y, float targetX, float targetY, Shop targetShop) {
 			this.model = model;
 			this.x = x;
 			this.y = y;
@@ -74,13 +66,12 @@ public class CustomerSpawner {
 			this.targetShop = targetShop;
 		}
 
-		/**
-		 * Moves toward (targetX, targetY) at a fixed speed until arrival.
-		 */
+		/** Moves toward (targetX, targetY) at a fixed speed until arrival. */
 		public void update(float delta) {
 			if (arrived) return;
 
-			float speed = 140f;
+			final float speed = 140f;
+
 			float dx = targetX - x;
 			float dy = targetY - y;
 			float dist = (float) Math.sqrt(dx * dx + dy * dy);
@@ -97,13 +88,11 @@ public class CustomerSpawner {
 			float nx = dx / dist;
 			float ny = dy / dist;
 
-			x += nx * speed * delta;
-			y += ny * speed * delta;
+			x += nx * step;
+			y += ny * step;
 		}
 
-		/**
-		 * Used by MarketEngine to trigger the purchase logic exactly once.
-		 */
+		/** True exactly once when the customer transitions into the arrived state. */
 		public boolean justArrived() {
 			if (arrived && !arrivalConsumed) {
 				arrivalConsumed = true;
@@ -114,83 +103,12 @@ public class CustomerSpawner {
 	}
 
 	// ============================================================
-	// Spawn mode 1: fixed 50/50 split (legacy baseline)
+	// Spawn
 	// ============================================================
 
 	/**
-	 * Creates an even-sized crowd where each market plan "pair type" produces:
-	 * - one customer forced to Player
-	 * - one customer forced to Rival
-	 *
-	 * This preserves the original demo behavior.
-	 */
-	public List<VisualCustomer> spawnFairCustomersFromPlan(
-			MarketPlan marketPlan,
-			int totalCustomers,
-			Shop playerShop,
-			Shop rivalShop,
-			float startX,
-			float startY,
-			float spacing,
-			float playerX,
-			float playerY,
-			float shopW,
-			float shopH,
-			float rivalX,
-			float rivalY,
-			float customerRadius,
-			float paddingInside
-			) {
-		marketPlan.ensureInitialized();
-
-		int evenCustomers = (totalCustomers % 2 == 0) ? totalCustomers : totalCustomers + 1;
-		int pairsNeeded = evenCustomers / 2;
-
-		List<String> pairTypes = marketPlan.getPairTypesForCustomers(evenCustomers);
-
-		List<VisualCustomer> crowd = new ArrayList<>();
-		int visualIndex = 0;
-
-		for (int i = 0; i < pairsNeeded; i++) {
-			String type = pairTypes.get(i);
-
-			Customer cPlayer = marketPlan.makeCustomerFromType(type);
-			Customer cRival = marketPlan.makeCustomerFromType(type);
-
-			crowd.add(new VisualCustomer(
-					cPlayer,
-					startX,
-					startY + (visualIndex * spacing),
-					(playerX + shopW / 2f),
-					(playerY + customerRadius + paddingInside),
-					playerShop
-					));
-			visualIndex++;
-
-			crowd.add(new VisualCustomer(
-					cRival,
-					startX,
-					startY + (visualIndex * spacing),
-					(rivalX + shopW / 2f),
-					(rivalY + customerRadius + paddingInside),
-					rivalShop
-					));
-			visualIndex++;
-		}
-
-		return crowd;
-	}
-
-	// ============================================================
-	// Spawn mode 2: customer chooses shop via DecisionLogic
-	// ============================================================
-
-	/**
-	 * Creates customers from the market plan and lets each one choose a shop.
-	 *
-	 * The market plan distribution remains the same:
-	 * - pairTypes contains one entry per "pair"
-	 * - each entry spawns two customers of that type
+	 * Spawns customers and assigns each one a target shop using DecisionLogic.pickShop(...).
+	 * Movement targets land inside the chosen shop rectangle.
 	 */
 	public List<VisualCustomer> spawnCustomersFromPlanWithShopChoice(
 			MarketPlan marketPlan,
@@ -218,44 +136,41 @@ public class CustomerSpawner {
 		marketPlan.ensureInitialized();
 
 		int evenCustomers = (totalCustomers % 2 == 0) ? totalCustomers : totalCustomers + 1;
-
-		List<String> pairTypes = marketPlan.getPairTypesForCustomers(evenCustomers);
+		List<Integer> pairSlots = marketPlan.getPairSlotsForCustomers(evenCustomers);
 
 		List<VisualCustomer> crowd = new ArrayList<>();
 		int visualIndex = 0;
 
-		for (String type : pairTypes) {
-			Customer c1 = marketPlan.makeCustomerFromType(type);
-			Customer c2 = marketPlan.makeCustomerFromType(type);
+		for (int ignoredSlot : pairSlots) {
+			Customer c1 = marketPlan.makeCustomer();
+			Customer c2 = marketPlan.makeCustomer();
 
-			visualIndex = addChosenCustomer(
+			visualIndex = addCustomer(
 					crowd, logic, c1,
 					playerShop, rivalShop,
 					startX, startY, spacing, visualIndex,
 					playerX, playerY, rivalX, rivalY,
-					shopW, shopH, customerRadius, paddingInside
+					shopW, shopH,
+					customerRadius, paddingInside
 					);
 
-			visualIndex = addChosenCustomer(
+			visualIndex = addCustomer(
 					crowd, logic, c2,
 					playerShop, rivalShop,
 					startX, startY, spacing, visualIndex,
 					playerX, playerY, rivalX, rivalY,
-					shopW, shopH, customerRadius, paddingInside
+					shopW, shopH,
+					customerRadius, paddingInside
 					);
 		}
 
 		return crowd;
 	}
 
-	/**
-	 * Assigns a shop, computes a destination point inside that shop, and appends
-	 * the VisualCustomer to the crowd list.
-	 */
-	private int addChosenCustomer(
+	private int addCustomer(
 			List<VisualCustomer> crowd,
 			DecisionLogic logic,
-			Customer c,
+			Customer customer,
 			Shop playerShop,
 			Shop rivalShop,
 			float startX,
@@ -271,21 +186,26 @@ public class CustomerSpawner {
 			float customerRadius,
 			float paddingInside
 			) {
-		Shop chosen = logic.pickShop(c, playerShop, rivalShop);
+		if (crowd == null) throw new IllegalArgumentException("crowd is null");
+		if (customer == null) return visualIndex;
 
-		float targetX;
-		float targetY;
+		Shop chosen = logic.pickShop(customer, playerShop, rivalShop);
+		if (chosen == null) chosen = playerShop;
 
-		if (chosen == playerShop) {
-			targetX = (playerX + shopW / 2f);
-			targetY = (playerY + customerRadius + paddingInside);
-		} else {
-			targetX = (rivalX + shopW / 2f);
-			targetY = (rivalY + customerRadius + paddingInside);
-		}
+		float shopLeftX = (chosen == playerShop) ? playerX : rivalX;
+		float shopBottomY = (chosen == playerShop) ? playerY : rivalY;
+
+		float minX = shopLeftX + paddingInside + customerRadius;
+		float maxX = shopLeftX + shopW - paddingInside - customerRadius;
+
+		float minY = shopBottomY + paddingInside + customerRadius;
+		float maxY = shopBottomY + shopH - paddingInside - customerRadius;
+
+		float targetX = clamp(randf(minX, maxX), minX, maxX);
+		float targetY = clamp(randf(minY, maxY), minY, maxY);
 
 		crowd.add(new VisualCustomer(
-				c,
+				customer,
 				startX,
 				startY + (visualIndex * spacing),
 				targetX,
@@ -297,17 +217,30 @@ public class CustomerSpawner {
 	}
 
 	// ============================================================
-	// Phase helper
+	// Phase completion
 	// ============================================================
 
-	/**
-	 * SELL phase ends once all customers have arrived at their target point.
-	 */
+	/** SELL phase ends once all customers have arrived at their target points. */
 	public boolean isSellPhaseOver(List<VisualCustomer> crowd) {
 		if (crowd == null || crowd.isEmpty()) return true;
 		for (VisualCustomer vc : crowd) {
-			if (!vc.arrived) return false;
+			if (vc != null && !vc.arrived) return false;
 		}
 		return true;
+	}
+
+	// ============================================================
+	// Small utilities
+	// ============================================================
+
+	private static float randf(float min, float max) {
+		if (max <= min) return min;
+		return (float) ThreadLocalRandom.current().nextDouble(min, max);
+	}
+
+	private static float clamp(float v, float lo, float hi) {
+		if (v < lo) return lo;
+		if (v > hi) return hi;
+		return v;
 	}
 }

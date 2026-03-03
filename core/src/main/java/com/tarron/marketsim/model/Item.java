@@ -3,36 +3,48 @@ package com.tarron.marketsim.model;
 /**
  * Item
  *
- * Purpose:
- * - Immutable value object representing a product that can be stocked and sold.
+ * Responsibilities:
+ * - Immutable product definition used throughout the simulation.
+ * - Represents a sellable unit with fixed price and quality.
  *
  * Used by:
- * - ItemCatalog (defines available items and vendor costs)
+ * - ItemCatalog (defines available products and vendor costs)
  * - Shop (inventory storage and sales)
- * - DecisionLogic (evaluates price and quality)
- * - RoundManager (per-item demand and sales tracking by name)
+ * - DecisionLogic (price/quality scoring)
+ * - RoundManager (per-item demand/sales tracking by name)
  *
- * Notes:
- * - Immutable: price and quality do not change during the simulation.
- * - Equality is value-based (name, price, quality) so items behave correctly
- *   when used in collections or compared across systems.
+ * Design:
+ * - Immutable: all fields are final.
+ * - Value-based equality (name, price, quality).
  */
 public class Item {
 
-	// Display name and identifier for demand/sales tracking
+	// ============================================================
+	// Core fields
+	// ============================================================
+
+	/** Display name and identifier for demand/sales tracking. */
 	private final String itemName;
 
-	// Customer purchase price
+	/** Customer-facing purchase price. */
 	private final double price;
 
-	// Abstract quality level used by decision scoring
+	/** Abstract quality level used in decision scoring. */
 	private final int quality;
+
+	// ============================================================
+	// Construction
+	// ============================================================
 
 	public Item(String name, double price, int quality) {
 		this.itemName = name;
 		this.price = price;
 		this.quality = quality;
 	}
+
+	// ============================================================
+	// Accessors
+	// ============================================================
 
 	public double getPrice() {
 		return price;
@@ -46,10 +58,12 @@ public class Item {
 		return quality;
 	}
 
+	// ============================================================
+	// Equality / hashing (value-based)
+	// ============================================================
+
 	/**
-	 * Value equality.
-	 * Two items are considered the same if their name, price, and quality match.
-	 * Required for correct behavior in maps, sets, and inventory comparisons.
+	 * Two items are equal if name, price, and quality match.
 	 */
 	@Override
 	public boolean equals(Object obj) {
@@ -60,12 +74,14 @@ public class Item {
 
 		if (quality != other.quality) return false;
 		if (Double.compare(other.price, price) != 0) return false;
-		return itemName != null ? itemName.equals(other.itemName) : other.itemName == null;
+		return itemName != null
+				? itemName.equals(other.itemName)
+						: other.itemName == null;
 	}
 
 	/**
 	 * Hash consistent with equals().
-	 * Allows Item to be used safely as a key in hash-based collections.
+	 * Safe for use in hash-based collections.
 	 */
 	@Override
 	public int hashCode() {

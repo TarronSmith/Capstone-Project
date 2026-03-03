@@ -8,30 +8,44 @@ import java.util.Map;
 /**
  * Shop
  *
- * Purpose:
- * - Represents a seller in the market.
- * - Maintains inventory, processes purchases, and tracks per-round performance.
+ * Responsibilities:
+ * - Stores inventory (Item -> quantity).
+ * - Processes customer purchases.
+ * - Tracks per-round revenue and units sold.
  *
- * Used by:
- * - MarketEngine (phase control, resets, stocking)
- * - DecisionLogic (via getItemsInStock)
- * - RoundManager/HUD (revenue and sales statistics)
- *
- * Notes:
- * - Inventory is stored as quantity counts per Item.
+ * Lifecycle:
+ * - Inventory persists across phases unless explicitly cleared.
  * - Revenue and sales counters reset each SELL phase.
  */
 public class Shop {
 
-	// Display name used in UI and customer memory
+	// ============================================================
+	// Identity
+	// ============================================================
+
+	/** Display name used in UI and customer memory. */
 	private String name;
 
-	// Per-round performance metrics
+	// ============================================================
+	// Per-round performance
+	// ============================================================
+
+	/** Revenue accumulated during the current SELL phase. */
 	private double revenueThisTurn;
+
+	/** Units sold during the current SELL phase. */
 	private int itemsSoldThisTurn;
 
-	// Inventory: Item -> quantity
-	private Map<Item, Integer> inventory = new HashMap<>();
+	// ============================================================
+	// Inventory
+	// ============================================================
+
+	/** Inventory map: Item -> quantity. */
+	private final Map<Item, Integer> inventory = new HashMap<>();
+
+	// ============================================================
+	// Getters
+	// ============================================================
 
 	public String getName() { return name; }
 	public void setName(String name) { this.name = name; }
@@ -40,7 +54,7 @@ public class Shop {
 	public int getItemsSoldThisTurn() { return itemsSoldThisTurn; }
 
 	/**
-	 * Returns current quantity for an item.
+	 * Returns current quantity for the given item.
 	 */
 	public int getQuantity(Item item) {
 		if (item == null) return 0;
@@ -48,14 +62,15 @@ public class Shop {
 	}
 
 	// ============================================================
-	// Inventory Management
+	// Inventory management
 	// ============================================================
 
 	/**
-	 * Adds items to inventory (one unit per entry).
+	 * Adds one unit per entry in the provided list.
 	 */
 	public void addItems(List<Item> items) {
 		if (items == null) return;
+
 		for (Item item : items) {
 			if (item == null) continue;
 			inventory.put(item, getQuantity(item) + 1);
@@ -63,7 +78,7 @@ public class Shop {
 	}
 
 	/**
-	 * Returns true if at least one unit is available.
+	 * Returns true if at least one unit of the item exists.
 	 */
 	public boolean hasItem(Item item) {
 		return getQuantity(item) > 0;
@@ -71,23 +86,25 @@ public class Shop {
 
 	/**
 	 * Removes all inventory.
-	 * Used when starting a new BUY phase depending on round policy.
+	 * Typically used at BUY phase transitions depending on round policy.
 	 */
 	public void clearInventory() {
 		inventory.clear();
 	}
 
 	/**
-	 * Returns the unique item types currently available (quantity > 0).
-	 * Used by DecisionLogic for customer choice.
+	 * Returns unique item types currently in stock (quantity > 0).
+	 * Used by DecisionLogic during customer evaluation.
 	 */
 	public List<Item> getItemsInStock() {
 		List<Item> out = new ArrayList<>();
+
 		for (Map.Entry<Item, Integer> e : inventory.entrySet()) {
 			if (e.getKey() != null && e.getValue() != null && e.getValue() > 0) {
 				out.add(e.getKey());
 			}
 		}
+
 		return out;
 	}
 
@@ -99,24 +116,27 @@ public class Shop {
 		if (qty <= 0) return false;
 
 		int newQty = qty - 1;
-		if (newQty == 0) inventory.remove(item);
-		else inventory.put(item, newQty);
+		if (newQty == 0) {
+			inventory.remove(item);
+		} else {
+			inventory.put(item, newQty);
+		}
 
 		return true;
 	}
 
 	// ============================================================
-	// Selling (multi-item system)
+	// Selling
 	// ============================================================
 
 	/**
 	 * Processes a customer purchase.
 	 *
 	 * Flow:
-	 * 1) Customer selects preferred item from available inventory
-	 * 2) Wallet is checked and charged
-	 * 3) Inventory is decremented
-	 * 4) Revenue and sales counters are updated
+	 * 1) Customer selects preferred item from available stock.
+	 * 2) Wallet is checked and charged.
+	 * 3) Inventory is decremented.
+	 * 4) Revenue and unit counters are updated.
 	 *
 	 * Returns the purchased item, or null if no transaction occurs.
 	 */
@@ -128,16 +148,15 @@ public class Shop {
 
 		Item choice = logic.pickFromList(customer, options);
 		if (choice == null) return null;
-
 		if (!hasItem(choice)) return null;
 
 		double price = choice.getPrice();
 		if (!customer.spend(price)) return null;
-
 		if (!removeOne(choice)) return null;
 
 		revenueThisTurn += price;
 		itemsSoldThisTurn++;
+
 		return choice;
 	}
 
@@ -146,7 +165,7 @@ public class Shop {
 	 * Called at the start of each SELL phase.
 	 */
 	public void resetTurnStats() {
-		revenueThisTurn = 0.0;
+		revenueThisTurn = 0;
 		itemsSoldThisTurn = 0;
 	}
 }
