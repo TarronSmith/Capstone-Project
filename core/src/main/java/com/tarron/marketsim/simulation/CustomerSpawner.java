@@ -23,6 +23,23 @@ import com.tarron.marketsim.model.Shop;
 public class CustomerSpawner {
 
 	// ============================================================
+	// Sprite selection
+	// ============================================================
+
+	/*
+	 * Total number of available customer sprites in the humanoid sheet.
+	 *
+	 * Based on the sheet being used:
+	 * - 5 columns
+	 * - 3 rows
+	 * = 15 total selectable character sprites
+	 *
+	 * This value is used only for random sprite assignment.
+	 * The actual sprite slicing and drawing are handled in FirstScreen.
+	 */
+	private static final int TOTAL_CUSTOMER_SPRITES = 15;
+
+	// ============================================================
 	// VisualCustomer
 	// ============================================================
 
@@ -36,6 +53,18 @@ public class CustomerSpawner {
 	public static class VisualCustomer {
 		public Customer model;
 		public Shop targetShop;
+
+		/*
+		 * Stable visual selection for this customer.
+		 *
+		 * This is assigned once when the VisualCustomer is created.
+		 * Rendering code uses this index to choose one sprite from the
+		 * loaded customer sprite sheet.
+		 *
+		 * Keeping this value on the customer prevents appearance flicker,
+		 * since the sprite does not re-randomize every frame.
+		 */
+		public int spriteIndex = 0;
 
 		// Set by MarketEngine after arrival
 		public double walletBefore = 0.0;
@@ -204,14 +233,24 @@ public class CustomerSpawner {
 		float targetX = clamp(randf(minX, maxX), minX, maxX);
 		float targetY = clamp(randf(minY, maxY), minY, maxY);
 
-		crowd.add(new VisualCustomer(
+		VisualCustomer vc = new VisualCustomer(
 				customer,
 				startX,
 				startY + (visualIndex * spacing),
 				targetX,
 				targetY,
 				chosen
-				));
+				);
+
+		/*
+		 * Assign one random sprite index when the customer is spawned.
+		 *
+		 * This keeps the customer's appearance fixed for the full SELL phase.
+		 * FirstScreen uses this index to choose a sprite from the customer sheet.
+		 */
+		vc.spriteIndex = ThreadLocalRandom.current().nextInt(TOTAL_CUSTOMER_SPRITES);
+
+		crowd.add(vc);
 
 		return visualIndex + 1;
 	}
