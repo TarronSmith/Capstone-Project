@@ -1,4 +1,4 @@
-package com.tarron.marketsim.simulation;
+package com.tarron.marketsim.ui;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -7,6 +7,8 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.tarron.marketsim.model.Shop;
+import com.tarron.marketsim.simulation.CustomerSpawner;
+import com.tarron.marketsim.simulation.RoundManager;
 
 /**
  * CustomerListRenderer

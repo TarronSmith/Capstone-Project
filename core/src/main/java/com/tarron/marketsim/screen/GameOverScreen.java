@@ -1,4 +1,4 @@
-package com.tarron.marketsim;
+package com.tarron.marketsim.screen;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.tarron.marketsim.MarketRivalGame;
 import com.tarron.marketsim.simulation.RoundManager;
 
 /**
