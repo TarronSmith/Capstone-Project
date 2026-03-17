@@ -1,4 +1,4 @@
-package com.tarron.marketsim;
+package com.tarron.marketsim.screen;
 
 import java.util.List;
 
@@ -6,15 +6,18 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.tarron.marketsim.MarketRivalGame;
 import com.tarron.marketsim.model.Shop;
-import com.tarron.marketsim.simulation.CustomerListRenderer;
 import com.tarron.marketsim.simulation.CustomerSpawner;
-import com.tarron.marketsim.simulation.HudRenderer;
 import com.tarron.marketsim.simulation.MarketEngine;
 import com.tarron.marketsim.simulation.RoundManager;
+import com.tarron.marketsim.ui.CustomerListRenderer;
+import com.tarron.marketsim.ui.HudRenderer;
 
 /**
  * FirstScreen
@@ -47,6 +50,38 @@ public class FirstScreen implements Screen {
 	private static final float CUSTOMER_RADIUS = 10f;
 
 	// ============================================================
+	// Sprite sheet settings
+	// ============================================================
+
+	/*
+	 * This path is relative to src/main/resources.
+	 *
+	 * Example actual file location:
+	 * src/main/resources/sprites/humanoid/Basic Humanoid Sprites 2x.png
+	 */
+	private static final String CUSTOMER_SHEET_PATH =
+			"sprites/humanoid/Basic Humanoid Sprites 2x.png";
+
+	/*
+	 * Sheet layout for the humanoid pack you showed:
+	 * - 5 columns
+	 * - 3 rows
+	 * - each sprite is 32x32 in the 2x sheet
+	 * - about 4 px gap between sprites
+	 * - about 2 px margin around the outside
+	 *
+	 * If the slicing looks slightly off in-game, these are the values to tweak.
+	 */
+	private static final int CUSTOMER_SHEET_COLS = 5;
+	private static final int CUSTOMER_SHEET_ROWS = 3;
+	private static final int CUSTOMER_FRAME_W = 32;
+	private static final int CUSTOMER_FRAME_H = 32;
+	private static final int CUSTOMER_MARGIN_X = 2;
+	private static final int CUSTOMER_MARGIN_Y = 2;
+	private static final int CUSTOMER_SPACING_X = 4;
+	private static final int CUSTOMER_SPACING_Y = 4;
+
+	// ============================================================
 	// Layout
 	// ============================================================
 
@@ -64,6 +99,17 @@ public class FirstScreen implements Screen {
 	private BitmapFont fontMain;
 	private BitmapFont fontSmall;
 	private BitmapFont fontStats;
+
+	/*
+	 * Customer sprite rendering:
+	 * - customerSheet holds the full sprite sheet image
+	 * - customerSprites holds the extracted individual sprites from that sheet
+	 *
+	 * Each customer will store one spriteIndex, and FirstScreen will draw that
+	 * specific sprite every frame.
+	 */
+	private Texture customerSheet;
+	private TextureRegion[] customerSprites;
 
 	// ============================================================
 	// Simulation + UI helpers
@@ -97,6 +143,13 @@ public class FirstScreen implements Screen {
 
 		hudRenderer = new HudRenderer();
 		customerListRenderer = new CustomerListRenderer();
+
+		/*
+		 * Load the full customer sprite sheet once at screen startup,
+		 * then slice it into individual TextureRegion sprites.
+		 */
+		customerSheet = new Texture(CUSTOMER_SHEET_PATH);
+		customerSprites = buildCustomerSprites(customerSheet);
 
 		engine = new MarketEngine(
 				INITIAL_CUSTOMERS,
@@ -224,21 +277,50 @@ public class FirstScreen implements Screen {
 		Shop rivalShop = engine.getRivalShop();
 		List<CustomerSpawner.VisualCustomer> crowd = engine.getCrowd();
 
+		/*
+		 * Keep the shops as simple rectangles for now.
+		 * We are only replacing the customer circles with randomized sprites.
+		 */
 		shapes.begin(ShapeRenderer.ShapeType.Filled);
 
 		shapes.rect(playerX, playerY, shopW, shopH);
 		shapes.rect(rivalX, rivalY, shopW, shopH);
 
-		for (CustomerSpawner.VisualCustomer vc : crowd) {
-			if (vc == null) continue;
-			shapes.circle(vc.x, vc.y, CUSTOMER_RADIUS);
-		}
-
 		shapes.end();
 
 		batch.begin();
+
+		/*
+		 * Draw each customer using the sprite assigned at spawn time.
+		 *
+		 * Important:
+		 * - vc.x / vc.y represent the customer center
+		 * - batch.draw(...) uses bottom-left coordinates
+		 * - so we subtract CUSTOMER_RADIUS to center the sprite on the old circle position
+		 *
+		 * Fallback behavior:
+		 * - if sprite data is missing or index is invalid, draw the full sheet's first sprite if available
+		 * - if customerSprites failed to load entirely, the customer simply won't render
+		 */
+		for (CustomerSpawner.VisualCustomer vc : crowd) {
+			if (vc == null) continue;
+
+			TextureRegion region = getCustomerSpriteFor(vc);
+
+			if (region != null) {
+				batch.draw(
+						region,
+						vc.x - CUSTOMER_RADIUS,
+						vc.y - CUSTOMER_RADIUS,
+						CUSTOMER_RADIUS * 2f,
+						CUSTOMER_RADIUS * 2f
+						);
+			}
+		}
+
 		fontMain.draw(batch, playerShop.getName(), playerX, playerY + shopH + 20);
 		fontMain.draw(batch, rivalShop.getName(), rivalX, rivalY + shopH + 20);
+
 		batch.end();
 	}
 
@@ -278,6 +360,60 @@ public class FirstScreen implements Screen {
 	}
 
 	// ============================================================
+	// Sprite helpers
+	// ============================================================
+
+	/**
+	 * Builds a flat array of individual customer sprites from the humanoid sheet.
+	 *
+	 * This is manual slicing because the sheet has visible padding/gaps between characters,
+	 * so TextureRegion.split(...) is less reliable here than explicit coordinates.
+	 */
+	private TextureRegion[] buildCustomerSprites(Texture sheet) {
+		if (sheet == null) return new TextureRegion[0];
+
+		TextureRegion[] out = new TextureRegion[CUSTOMER_SHEET_COLS * CUSTOMER_SHEET_ROWS];
+		int index = 0;
+
+		for (int row = 0; row < CUSTOMER_SHEET_ROWS; row++) {
+			for (int col = 0; col < CUSTOMER_SHEET_COLS; col++) {
+				int x = CUSTOMER_MARGIN_X + col * (CUSTOMER_FRAME_W + CUSTOMER_SPACING_X);
+				int y = CUSTOMER_MARGIN_Y + row * (CUSTOMER_FRAME_H + CUSTOMER_SPACING_Y);
+
+				out[index++] = new TextureRegion(
+						sheet,
+						x,
+						y,
+						CUSTOMER_FRAME_W,
+						CUSTOMER_FRAME_H
+						);
+			}
+		}
+
+		return out;
+	}
+
+	/**
+	 * Returns the customer's assigned sprite.
+	 *
+	 * This assumes VisualCustomer has a public int field named spriteIndex.
+	 * That field should be assigned once when the customer is created,
+	 * so the same customer keeps the same appearance for the whole SELL phase.
+	 */
+	private TextureRegion getCustomerSpriteFor(CustomerSpawner.VisualCustomer vc) {
+		if (vc == null) return null;
+		if (customerSprites == null || customerSprites.length == 0) return null;
+
+		int idx = vc.spriteIndex;
+
+		if (idx < 0 || idx >= customerSprites.length) {
+			idx = 0;
+		}
+
+		return customerSprites[idx];
+	}
+
+	// ============================================================
 	// Screen lifecycle
 	// ============================================================
 
@@ -297,5 +433,8 @@ public class FirstScreen implements Screen {
 		if (fontMain != null) fontMain.dispose();
 		if (fontSmall != null) fontSmall.dispose();
 		if (fontStats != null) fontStats.dispose();
+
+		// Dispose the loaded sprite sheet texture.
+		if (customerSheet != null) customerSheet.dispose();
 	}
 }
