@@ -10,7 +10,6 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.tarron.marketsim.MarketRivalGame;
 import com.tarron.marketsim.model.Shop;
 import com.tarron.marketsim.simulation.CustomerSpawner;
@@ -18,6 +17,7 @@ import com.tarron.marketsim.simulation.MarketEngine;
 import com.tarron.marketsim.simulation.RoundManager;
 import com.tarron.marketsim.ui.CustomerListRenderer;
 import com.tarron.marketsim.ui.HudRenderer;
+import com.tarron.marketsim.world.TileMap;
 
 /**
  * FirstScreen
@@ -25,7 +25,7 @@ import com.tarron.marketsim.ui.HudRenderer;
  * Responsibilities:
  * - Main gameplay screen (BUY / SELL / RESULTS).
  * - Handles input mapping and delegates actions to MarketEngine.
- * - Renders shops, customers, and HUD.
+ * - Renders the tile map, shop houses, customers, and HUD.
  * - Switches to GameOverScreen when the session ends.
  */
 public class FirstScreen implements Screen {
@@ -50,20 +50,14 @@ public class FirstScreen implements Screen {
 	private static final float CUSTOMER_RADIUS = 10f;
 
 	// ============================================================
-	// Sprite sheet settings
+	// Customer sprite sheet settings
 	// ============================================================
 
-	/*
-	 * This path is relative to src/main/resources.
-	 *
-	 * Example actual file location:
-	 * src/main/resources/sprites/humanoid/Basic Humanoid Sprites 2x.png
-	 */
 	private static final String CUSTOMER_SHEET_PATH =
 			"sprites/humanoid/Basic Humanoid Sprites 2x.png";
 
 	/*
-	 * Sheet layout for the humanoid pack you showed:
+	 * Sheet layout for the humanoid pack currently being used:
 	 * - 5 columns
 	 * - 3 rows
 	 * - each sprite is 32x32 in the 2x sheet
@@ -82,19 +76,67 @@ public class FirstScreen implements Screen {
 	private static final int CUSTOMER_SPACING_Y = 4;
 
 	// ============================================================
-	// Layout
+	// House sprite settings
 	// ============================================================
 
-	private final float shopW = 220, shopH = 140;
-	private final float playerX = 80,  playerY = 260;
-	private final float rivalX  = 500, rivalY  = 260;
+	/*
+	 * Premade shop house sprites.
+	 *
+	 * These were composed externally from the same asset pack, which keeps the
+	 * style consistent while avoiding the complexity of building the roofs/walls
+	 * procedurally in code.
+	 */
+	
+	private static final String PLAYER_SHOP_PATH =
+			"Pixel Crawler - Free Pack/Environment/Structures/Custom/House-1.png";
+
+	private static final String RIVAL_SHOP_PATH =
+			"Pixel Crawler - Free Pack/Environment/Structures/Custom/House-2.png";
+
+	/*
+	 * The house sprites are 96x96 source images.
+	 *
+	 * Rendering them at 160x160 gives them more presence in the scene and fits
+	 * the current shop spacing reasonably well.
+	 *
+	 * These values can be tweaked later if the path/building alignment needs
+	 * fine adjustment.
+	 */
+	private static final float HOUSE_DRAW_W = 160f;
+	private static final float HOUSE_DRAW_H = 160f;
+
+	// ============================================================
+	// Layout / logical shop bounds
+	// ============================================================
+
+	/*
+	 * Shop bounds still exist as logical rectangles for the simulation.
+	 *
+	 * The visible houses are now premade sprites, but the simulation still needs
+	 * a rectangular target area for customer movement and arrival logic.
+	 */
+	private final float shopW = 160f;
+	private final float shopH = 120f;
+
+	private float playerX;
+	private float playerY;
+	private float rivalX;
+	private float rivalY;
+
+	/*
+	 * House draw positions are separate from the logical shop bounds so the
+	 * sprites can visually overhang the simulation rectangle if needed.
+	 */
+	private float playerHouseDrawX;
+	private float playerHouseDrawY;
+	private float rivalHouseDrawX;
+	private float rivalHouseDrawY;
 
 	// ============================================================
 	// Rendering
 	// ============================================================
 
 	private OrthographicCamera camera;
-	private ShapeRenderer shapes;
 	private SpriteBatch batch;
 	private BitmapFont fontMain;
 	private BitmapFont fontSmall;
@@ -105,11 +147,20 @@ public class FirstScreen implements Screen {
 	 * - customerSheet holds the full sprite sheet image
 	 * - customerSprites holds the extracted individual sprites from that sheet
 	 *
-	 * Each customer will store one spriteIndex, and FirstScreen will draw that
-	 * specific sprite every frame.
+	 * Each customer stores one spriteIndex, and FirstScreen draws the matching
+	 * sprite every frame.
 	 */
 	private Texture customerSheet;
 	private TextureRegion[] customerSprites;
+
+	/*
+	 * World rendering:
+	 * - tileMap owns the ground/path grid and tile textures
+	 * - playerHouseTexture / rivalHouseTexture are premade building sprites
+	 */
+	private TileMap tileMap;
+	private Texture playerHouseTexture;
+	private Texture rivalHouseTexture;
 
 	// ============================================================
 	// Simulation + UI helpers
@@ -131,7 +182,6 @@ public class FirstScreen implements Screen {
 		camera = new OrthographicCamera();
 		camera.setToOrtho(false, (int) SCREEN_W, (int) SCREEN_H);
 
-		shapes = new ShapeRenderer();
 		batch = new SpriteBatch();
 
 		fontMain = new BitmapFont();
@@ -143,6 +193,44 @@ public class FirstScreen implements Screen {
 
 		hudRenderer = new HudRenderer();
 		customerListRenderer = new CustomerListRenderer();
+
+		/*
+		 * Create the tile map first.
+		 *
+		 * The tile map still controls the outdoor layout and path system.
+		 * The houses are now independent premade sprites drawn on top of it.
+		 */
+		tileMap = new TileMap();
+
+		/*
+		 * Logical shop positions remain anchored from the tile map.
+		 *
+		 * These are used by the simulation for customer targeting.
+		 */
+		playerX = tileMap.getPlayerHouseWorldX();
+		playerY = tileMap.getPlayerHouseWorldY();
+
+		rivalX = tileMap.getRivalHouseWorldX();
+		rivalY = tileMap.getRivalHouseWorldY();
+
+		/*
+		 * Visible house sprite draw positions.
+		 *
+		 * The premade house sprite is larger than the logical shop bounds, so the
+		 * draw position is offset slightly to center the house visually over the
+		 * underlying shop rectangle.
+		 */
+		playerHouseDrawX = playerX;
+		playerHouseDrawY = playerY - 8f;
+
+		rivalHouseDrawX = rivalX;
+		rivalHouseDrawY = rivalY - 8f;
+
+		/*
+		 * Load the premade house sprites.
+		 */
+		playerHouseTexture = new Texture(PLAYER_SHOP_PATH);
+		rivalHouseTexture = new Texture(RIVAL_SHOP_PATH);
 
 		/*
 		 * Load the full customer sprite sheet once at screen startup,
@@ -167,7 +255,6 @@ public class FirstScreen implements Screen {
 		clearScreen();
 
 		camera.update();
-		shapes.setProjectionMatrix(camera.combined);
 		batch.setProjectionMatrix(camera.combined);
 
 		handleGlobalKeys();
@@ -243,9 +330,16 @@ public class FirstScreen implements Screen {
 	}
 
 	private void beginSellPhase() {
-		float startX = 380;
-		float startY = 60;
-		float spacing = 22;
+		/*
+		 * Crowd spawn position is still using a simple open staging point.
+		 *
+		 * A later update can move this to a tile-based spawn point and eventually
+		 * to full path-based movement. For now, the goal is to keep the existing
+		 * simulation working while the world visuals improve.
+		 */
+		float startX = 380f;
+		float startY = 60f;
+		float spacing = 22f;
 
 		float paddingInside = 12f;
 
@@ -278,29 +372,34 @@ public class FirstScreen implements Screen {
 		List<CustomerSpawner.VisualCustomer> crowd = engine.getCrowd();
 
 		/*
-		 * Keep the shops as simple rectangles for now.
-		 * We are only replacing the customer circles with randomized sprites.
+		 * Draw order:
+		 * 1. Tile map background
+		 * 2. Premade house sprites
+		 * 3. Customer sprites
+		 * 4. Shop labels
 		 */
-		shapes.begin(ShapeRenderer.ShapeType.Filled);
-
-		shapes.rect(playerX, playerY, shopW, shopH);
-		shapes.rect(rivalX, rivalY, shopW, shopH);
-
-		shapes.end();
-
 		batch.begin();
 
 		/*
-		 * Draw each customer using the sprite assigned at spawn time.
-		 *
-		 * Important:
-		 * - vc.x / vc.y represent the customer center
-		 * - batch.draw(...) uses bottom-left coordinates
-		 * - so we subtract CUSTOMER_RADIUS to center the sprite on the old circle position
-		 *
-		 * Fallback behavior:
-		 * - if sprite data is missing or index is invalid, draw the full sheet's first sprite if available
-		 * - if customerSprites failed to load entirely, the customer simply won't render
+		 * Ground / path layer
+		 */
+		if (tileMap != null) {
+			tileMap.render(batch);
+		}
+
+		/*
+		 * House/building layer
+		 */
+		if (playerHouseTexture != null) {
+			batch.draw(playerHouseTexture, playerHouseDrawX, playerHouseDrawY, HOUSE_DRAW_W, HOUSE_DRAW_H);
+		}
+
+		if (rivalHouseTexture != null) {
+			batch.draw(rivalHouseTexture, rivalHouseDrawX, rivalHouseDrawY, HOUSE_DRAW_W, HOUSE_DRAW_H);
+		}
+
+		/*
+		 * Customer/entity layer
 		 */
 		for (CustomerSpawner.VisualCustomer vc : crowd) {
 			if (vc == null) continue;
@@ -318,8 +417,11 @@ public class FirstScreen implements Screen {
 			}
 		}
 
-		fontMain.draw(batch, playerShop.getName(), playerX, playerY + shopH + 20);
-		fontMain.draw(batch, rivalShop.getName(), rivalX, rivalY + shopH + 20);
+		/*
+		 * Labels
+		 */
+		fontMain.draw(batch, playerShop.getName(), playerX, playerY + shopH + 28f);
+		fontMain.draw(batch, rivalShop.getName(), rivalX, rivalY + shopH + 28f);
 
 		batch.end();
 	}
@@ -366,8 +468,9 @@ public class FirstScreen implements Screen {
 	/**
 	 * Builds a flat array of individual customer sprites from the humanoid sheet.
 	 *
-	 * This is manual slicing because the sheet has visible padding/gaps between characters,
-	 * so TextureRegion.split(...) is less reliable here than explicit coordinates.
+	 * This is manual slicing because the sheet has visible padding/gaps between
+	 * characters, so TextureRegion.split(...) is less reliable here than explicit
+	 * coordinates.
 	 */
 	private TextureRegion[] buildCustomerSprites(Texture sheet) {
 		if (sheet == null) return new TextureRegion[0];
@@ -397,8 +500,8 @@ public class FirstScreen implements Screen {
 	 * Returns the customer's assigned sprite.
 	 *
 	 * This assumes VisualCustomer has a public int field named spriteIndex.
-	 * That field should be assigned once when the customer is created,
-	 * so the same customer keeps the same appearance for the whole SELL phase.
+	 * That field is assigned once when the customer is created so the same
+	 * customer keeps the same appearance for the full SELL phase.
 	 */
 	private TextureRegion getCustomerSpriteFor(CustomerSpawner.VisualCustomer vc) {
 		if (vc == null) return null;
@@ -428,13 +531,19 @@ public class FirstScreen implements Screen {
 
 	@Override
 	public void dispose() {
-		if (shapes != null) shapes.dispose();
 		if (batch != null) batch.dispose();
 		if (fontMain != null) fontMain.dispose();
 		if (fontSmall != null) fontSmall.dispose();
 		if (fontStats != null) fontStats.dispose();
 
-		// Dispose the loaded sprite sheet texture.
+		// Dispose the loaded customer sprite sheet texture.
 		if (customerSheet != null) customerSheet.dispose();
+
+		// Dispose house textures.
+		if (playerHouseTexture != null) playerHouseTexture.dispose();
+		if (rivalHouseTexture != null) rivalHouseTexture.dispose();
+
+		// Dispose tile map assets.
+		if (tileMap != null) tileMap.dispose();
 	}
 }
