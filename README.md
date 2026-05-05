@@ -1,5 +1,5 @@
 # MarketRival
-**Adaptive Market Competition Simulator**
+**Market Competition Simulator**
 
 ---
 
