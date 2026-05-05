@@ -1,176 +1,256 @@
 # MarketRival
 **Adaptive Market Competition Simulator**
 
+---
+
 ## Project Overview
-MarketRival is a 2D, top-down simulation game in which the player operates a shop competing against an AI-controlled rival in a finite market. Customers with different purchasing behaviors choose where to shop based on price, quality, popularity, and social influence. The player’s objective is to generate more profit than the rival and ultimately force them into bankruptcy through better strategic decisions.
+MarketRival is a 2D, top-down simulation game where the player runs a shop competing against an AI-controlled rival across multiple rounds. Customers with different behaviors evaluate shops based on price, availability, and demand trends.
 
-The project emphasizes adaptive AI decision-making, agent-based simulation, and clearly defined, deterministic game rules rather than real-time action gameplay.
+The objective is to outperform the rival by making better purchasing decisions, managing inventory efficiently, and responding to evolving market demand.
 
----
-
-## Project Goals
-
-### Primary Goals
-- Implement a complete market simulation with discrete Buy Phases and Sell Phases
-- Model heterogeneous customer behavior using agent-based decision logic
-- Design a rival AI that adapts to market conditions using heuristic strategies
-
-### Secondary Goals
-- Provide player-facing analytics to support strategic decisions
-- Maintain a clean, modular architecture
-- Demonstrate good software engineering practices (version control, documentation)
+The project emphasizes:
+- Agent-based simulation
+- Adaptive AI behavior
+- Deterministic economic rules
+- Structured UI-driven gameplay (not console/debug driven)
 
 ---
 
-## Game Rules & Mechanics
+## Current Features (As Implemented)
 
-### Phase Structure
-Each turn consists of two phases:
+### Core Gameplay Loop
+Each round follows:
 
-#### Buy Phase
-- The player and rival AI purchase inventory using available funds
-- Market statistics from previous rounds are visible
-- Purchased items become available for sale during the upcoming Sell Phase
+**BUY → SELL → RESULTS**
 
-#### Sell Phase
-- Customers enter the market and choose a shop to visit
-- Each customer evaluates the available inventory
-- Customers attempt to purchase at most one item
-- A sale occurs only if the item is in stock and affordable
-- Sales update revenue, profit, and market demand statistics
+- BUY Phase:
+  - Player purchases inventory via UI (buttons/menu)
+  - Rival AI stocks inventory based on demand heuristics
 
-A shop is considered bankrupt when its wallet reaches zero or below.
+- SELL Phase:
+  - Customers spawn and physically move across the map
+  - Customers choose shops and attempt purchases
+  - Inventory and affordability determine successful sales
 
----
-
-## Game Loop
-Each round of the simulation follows this process:
-### Buy Phase:
-- Player and rival purchase inventory
-
-### Customer Spawn
-- Customers are generated according to the market distribution
-
-### Shop Selection
-- Customers evaluate both shops and choose where to visit
-
-### Sell Phase
-- Customers attempt to purchase items
-
-### Results
-- Sales, revenue, and demand statistics are recorded for the next round
+- RESULTS Phase:
+  - Revenue, profit, and demand statistics are finalized
+  - Data is stored for next round decisions
 
 ---
 
-## AI Design
+### Player UI (Fully Implemented)
 
-### Customer AI
-Customers are modeled as agents with behavioral profiles that influence their purchasing decisions.
+#### Order Menu
+- Displays all available items
+- Shows:
+  - Buy price (vendor cost)
+  - Sell price
+- Includes clickable **BUY buttons**
 
-Each customer has a CustomerProfile containing parameters such as:
-- priceSensitivity : preference for lower prices
-- qualitySensitivity : preference for higher quality goods
-- prestigeBias : preference for premium products
-- loyalty : tendency to return to previously visited shops
-- stockoutAversion : tendency to avoid shops that previously failed to satisfy them
+#### Inventory Menu
+- Displays player-owned items and quantities
 
-Customers evaluate items using a scoring function implemented in DecisionLogic. The item with the highest score that the customer can afford is selected.
-Customers also maintain limited memory of previous rounds, which influences future behavior.
+#### Round Summary Tab (Top Center UI)
+- Displays:
+  - Current round
+  - Current wallet
+  - Current phase (BUY / SELL / RESULTS)
+- Expandable panel showing:
+  - Top desired item (last round)
+  - Top sold item
+  - Total spent
+  - Revenue
+  - Profit
+  - Items sold (with wrapping text)
 
-### Rival AI
-The rival shop uses heuristic decision logic to determine how to stock inventory each round.
-The AI considers factors such as:
-- available funds
-- recent demand patterns
-- inventory composition
-- expected profitability
+---
+
+### Visual Simulation
+
+#### Tile-Based Map
+- Static, hand-placed environment (non-random)
+- Includes:
+  - Two shops (player + rival)
+  - Road system
+  - Distributed vegetation for visual density
+
+#### Customer Movement
+- Customers:
+  - Spawn off-screen
+  - Move along road
+  - Enter shops via entrance points
+  - Exit after interaction
+
+#### Sprite System
+- Pixel-art characters (sprite sheet)
+- Nearest-neighbor scaling for crisp visuals
+
+---
+
+### AI Systems
+
+#### Customer AI
+Customers evaluate items using scoring logic based on:
+- affordability
+- availability
+- item attractiveness
+
+Each customer:
+- chooses a shop
+- attempts to purchase one item
+- contributes to demand tracking
+
+---
+
+#### Rival AI
+The rival shop:
+- analyzes previous round demand
+- guarantees minimum stock for demanded items
+- allocates remaining budget using a heuristic:
+
+This prioritizes:
+- high-demand items
+- high-profit-margin items
+
+---
+
+### Market Analytics
+
+Tracked per round:
+- items desired
+- items sold
+- revenue
+- profit
+- inventory flow
+
+These directly influence:
+- AI decisions
+- player strategy
+
+---
+
+## Architecture Overview
+
+### Simulation Engine
+- `MarketEngine`
+  - controls game loop and phase transitions
+  - processes customer interactions
+  - manages game state
+
+### Round Management
+- `RoundManager`
+  - tracks phase (BUY / SELL / RESULTS)
+  - tracks round number
+  - stores per-round analytics
+
+### Customer System
+- `CustomerSpawner`
+  - handles spawning and movement
+- `DecisionLogic`
+  - determines purchases
+
+### Shop System
+- `Shop`
+  - inventory, revenue, spending
+- `ItemCatalog`
+  - defines available items
+- `Item`
+  - pricing and attributes
+
+### UI Layer
+- `BuyMenuUI`
+- `RoundSummaryTabUI`
+- (legacy debug HUD removed)
+
+### Rendering
+- `FirstScreen`
+  - main render loop
+  - input handling
+  - UI coordination
 
 ---
 
 ## Technology Stack
-- **Language:** Java  
-- **Framework:** LibGDX  
-- **Game Style:** 2D pixel art, top-down simulation  
-- **Sprite Resolution:** 16×16 pixels (scaled at runtime)  
-- **AI Techniques:** Utility-based heuristics, agent-based modeling  
-- **Build System:** Gradle  
-- **IDE:** Eclipse  
-- **Version Control:** Git and GitHub  
-- **Assets:** Open-license pixel art from itch.io  
+- Language: Java  
+- Framework: LibGDX  
+- Rendering: SpriteBatch (2D)  
+- Build: Gradle  
+- IDE: Eclipse  
+- Version Control: Git / GitHub  
+- Assets: Open-license pixel art  
 
 ---
 
-## Project Architecture
-### Simulation Engine
-MarketEngine:
-- Controls the main simulation loop
-- Manages phase transitions
-- Spawns customers
-- Processes purchases and market statistics
+## Updated Development Timeline
 
-### Round Management
-RoundManager:
-- Tracks the current game phase
-- Maintains turn statistics
-= Controls phase progression
-
-### Customer System
-- Customer : represents an individual agent
-- CustomerProfile : defines behavioral parameters
-- DecisionLogic : determines shop and item choices
-
-### Shop System
-- Shop : manages inventory, sales, and revenue
-- Item : represents products with price and quality attributes
-
-### Customer Spawning & Movement
-CustomerSpawner:
-- Generates customers according to the market distribution
-- Handles visual movement toward shops during the Sell Phase
-
-Rendering Layer
-- FirstScreen : main game screen and input handling
-- HudRenderer : displays game statistics
-- CustomerListRenderer : displays customer activity logs
+### Feb 3 – Feb 10
+- Core models (Item, Shop, Customer)
+- Initial simulation logic
+- Basic decision system
 
 ---
 
-## Project Timeline
-Development Strategy:
-**Rules -> Simulation -> AI -> UI -> Polish**, ensuring a working system early and reducing scope risk.
+### Feb 10 – Feb 17
+- Multi-item system via ItemCatalog
+- Dynamic inventory handling
+- Demand tracking system
 
-### Feb 2 – Feb 16: Core Rules & Data Models
-- Define core domain classes (`Shop`, `Item`, `Inventory`, `Customer`, `MarketState`)
-- Implement deterministic game rules (wallet updates, inventory constraints, bankruptcy)
-- Validate correctness using console output and test simulations
+---
 
-### Feb 17 – Mar 2: Buy/Sell Phase Simulation Engine
-- Implement the turn loop: **Buy Phase -> Sell Phase -> End-of-Turn Updates**
-- Implement purchase resolution (stock checks, affordability, profit calculation)
-- Track per-turn metrics (sales, revenue, profit, market share)
+### Feb 17 – Feb 24
+- Rival AI upgrade (demand-driven stocking)
+- Refactoring for scalability
+- Improved HUD (still debug-based)
 
-### Mar 3 – Mar 16: Customer Agent Behavior
-- Implement customer types (Followers, Prestige Buyers, Value Buyers)
-- Implement weighted scoring logic for shop and item selection
-- Verify market dynamics through repeated simulation runs
+---
 
-### **Mar 17: Midterm Checkpoint**
-- Fully functional market simulation (logic-complete)
-- Buy and Sell Phases operational
-- Customer behavior implemented and testable
-- Console-driven or minimal UI demonstration available
+### Feb 24 – Mar 3
+- Full round system (BUY / SELL / RESULTS)
+- Game over conditions
+- Round tracking and win/loss logic
 
-### Mar 18 – Apr 6: Rival AI (Utility-Based Heuristics)
-- Implement rival shop decision-making (pricing, inventory purchasing)
-- Implement utility scoring (expected profit, market share, bankruptcy risk)
-- Add constraints to ensure the AI is challenging but beatable
+---
 
-### Apr 7 – Apr 20: UI Integration & Visuals
-- Connect simulation engine to LibGDX UI
-- Display core statistics (wallets, inventory, turn number, profits)
-- Integrate 16×16 pixel art assets and basic animations
+### Mar – Present (Major Progress Phase)
 
-### Apr 21 – May 5: Analytics, Balancing, and Final Polish
-- Add player-facing analytics (item performance, demand indicators)
-- Balance AI difficulty and economic parameters
-- Bug fixes, documentation updates, and final submission preparation
+#### UI Overhaul
+- Replaced debug HUD with:
+  - Buy menu UI
+  - Inventory panel
+  - Round summary tab
+- Added clickable buttons and mouse input
+
+#### Visual Simulation Upgrade
+- Implemented customer movement paths
+- Added entrance/exit logic for shops
+- Built static tile map with full vegetation placement
+
+#### Gameplay Polish
+- Added spending, revenue, and profit tracking
+- Fixed UI alignment and text rendering
+- Implemented text wrapping for dynamic UI content
+- Removed debug overlays
+
+---
+
+## Current State of the Project
+
+The game is now:
+- Fully playable
+- Visually structured
+- UI-driven (not debug-driven)
+- Using a complete round-based loop
+
+Remaining work is focused on:
+- additional UI polish
+- balancing
+- feature expansion
+
+---
+
+## Future Improvements
+- Enhanced AI strategies
+- Sound effects and feedback
+- UI animations and transitions
+- Expanded map environments
+- Save/load system
