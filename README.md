@@ -181,71 +181,237 @@ These directly influence:
 
 ---
 
-## Updated Development Timeline
+## Project Timeline
 
-### Feb 3 – Feb 10
-- Core models (Item, Shop, Customer)
-- Initial simulation logic
-- Basic decision system
+## Project Timeline
 
----
-
-### Feb 10 – Feb 17
-- Multi-item system via ItemCatalog
-- Dynamic inventory handling
-- Demand tracking system
+Development strategy:
+Rules → Simulation → AI → UI → Polish
 
 ---
 
-### Feb 17 – Feb 24
-- Rival AI upgrade (demand-driven stocking)
-- Refactoring for scalability
-- Improved HUD (still debug-based)
+### 2/3 – 2/10: Project Setup and Core Models
+- Set up the LibGDX project structure
+- Created main Java package structure
+- Implemented core domain models:
+  - `Item`
+  - `Customer`
+  - `Shop`
+  - `DecisionLogic`
+- Built initial customer purchase behavior
+- Began validating game rules through simulation output
 
 ---
 
-### Feb 24 – Mar 3
-- Full round system (BUY / SELL / RESULTS)
-- Game over conditions
-- Round tracking and win/loss logic
+### 2/10 – 2/17: Simulation Engine and Gameplay Loop
+- Built simulation engine components:
+  - `MarketPlan`
+  - `CustomerSpawner`
+  - `MarketEngine`
+  - `RoundManager`
+  - `RivalAI`
+- Connected simulation to LibGDX via `FirstScreen`
+- Added keyboard-based buy controls
+- Displayed inventory, demand, and revenue stats
+- Implemented first working loop:
+  BUY → SELL → RESULTS
+- Achieved first playable demo
 
 ---
 
-### Mar – Present (Major Progress Phase)
-
-#### UI Overhaul
-- Replaced debug HUD with:
-  - Buy menu UI
-  - Inventory panel
-  - Round summary tab
-- Added clickable buttons and mouse input
-
-#### Visual Simulation Upgrade
-- Implemented customer movement paths
-- Added entrance/exit logic for shops
-- Built static tile map with full vegetation placement
-
-#### Gameplay Polish
-- Added spending, revenue, and profit tracking
-- Fixed UI alignment and text rendering
-- Implemented text wrapping for dynamic UI content
-- Removed debug overlays
+### 2/17 – 2/24: Multi-Item System and Demand Tracking
+- Replaced fixed-item system with `ItemCatalog`
+- Updated engine to support:
+  - dynamic item selection
+  - scalable inventory system
+- Added demand tracking:
+  - desired items (Sell phase)
+  - sold items (Sell phase)
+- Refactored simulation to scale cleanly
 
 ---
 
-## Current State of the Project
+### 2/24 – 3/3: Rival AI + Round System
+- Improved `RivalAI` with demand-based logic
 
-The game is now:
-- Fully playable
-- Visually structured
-- UI-driven (not debug-driven)
-- Using a complete round-based loop
+Rival AI now:
+- reads previous round demand
+- buys at least one of demanded items
+- spends remaining cash using scoring
 
-Remaining work is focused on:
-- additional UI polish
-- balancing
-- feature expansion
+Heuristic:
+score = demandShare * (price / vendorCost)
 
+- Implemented finite round system
+- `RoundManager` now tracks:
+  - current round
+  - max rounds
+  - game outcome
+- Added `GameOverScreen`
+- Implemented win / loss / tie conditions
+- Updated HUD with round + cash display
+
+---
+
+### 3/3 – 3/10: Customer Movement and Shop Flow
+- Expanded `CustomerSpawner` into full movement system
+
+Customers now:
+- spawn from either side
+- walk along the road
+- enter shops via entrances
+- disappear inside shops
+- wait briefly (shopping time)
+- exit map afterward
+
+- Added logic to visit second shop if needed
+- Improved spacing between customers
+- Aligned movement with road visually
+
+---
+
+### 3/10 – 3/17: Tile Map and World Rendering
+- Created `TileMap` system
+- Added:
+  - grass tiles
+  - road tiles
+  - entrance paths
+  - vegetation layer
+- Replaced tile-based shops with sprite-based shops
+- Added player and rival shop sprites
+- Updated rendering pipeline in `FirstScreen`
+- Ensured consistent pixel scaling
+
+---
+
+### 3/17 – 3/24: Buy Menu and Inventory UI
+- Created `BuyMenuUI`
+- Added:
+  - order panel
+  - inventory panel
+  - clickable BUY buttons
+- Integrated pixel font (pxfntfree9-8x10)
+- Updated item display:
+  - shortened names
+  - buy price
+  - sell price
+- Fixed UI alignment and formatting
+
+---
+
+### 3/24 – 3/31: Round Summary UI and Analytics
+- Created `RoundSummaryTabUI`
+- Added top-center tab displaying:
+  - phase (BUY / SELL / RESULTS)
+  - round number
+  - player wallet
+
+Expandable panel shows:
+- top desired item
+- top sold item
+- amount spent
+- revenue
+- profit
+- items sold
+
+- Updated `RoundManager` to track:
+  - last round spending
+  - revenue
+  - profit
+  - demand stats
+- Implemented text wrapping for long lines
+- Fixed unstable phase switching display
+
+---
+
+### 3/31 – 4/7: Debug Cleanup and Visual Polish
+- Removed debug HUD clutter
+- Finalized main gameplay screen:
+  - map
+  - shops
+  - customers
+  - UI panels
+- Expanded vegetation placement
+- Eliminated:
+  - overlapping sprites
+  - blocked paths
+  - empty regions
+- Improved overall scene composition
+
+---
+
+### 4/7 – 4/14: UI Integration and System Stability
+- Finalized interaction between:
+  - `RoundManager`
+  - `BuyMenuUI`
+  - `RoundSummaryTabUI`
+- Fixed phase transition instability:
+  - removed rapid switching between phases
+  - stabilized SELL → RESULTS flow
+- Ensured consistent phase display (BUY / SELL / RESULTS)
+- Verified correct tracking of:
+  - spending
+  - revenue
+  - profit
+  - demand stats
+- Completed functional integration of all major systems
+
+---
+
+### 4/14 – 4/21: UI Stabilization and Menu Completion
+- Finalized `BuyMenuUI` layout and interaction
+- Added clickable BUY buttons per item
+- Fixed inventory display mismatch
+- Standardized money formatting:
+  - decimal precision
+  - consistent UI formatting
+- Integrated updated font with:
+  - decimal support
+  - dollar symbol support
+- Fixed text alignment and spacing issues
+- Corrected UI positioning and layering
+
+---
+
+### 4/21 – 4/28: Round Summary System Finalization
+- Completed `RoundSummaryTabUI` functionality
+- Added expandable round summary panel
+- Finalized display of:
+  - top desired item
+  - top sold item
+  - spending
+  - revenue
+  - profit
+  - items sold
+- Implemented text wrapping for item lists
+- Fixed overflow issues in UI panel
+- Improved formatting and alignment of summary data
+
+---
+
+### 4/28 – 5/5: Map Finalization and Debug Removal
+- Finalized static `TileMap` layout
+- Reworked vegetation placement:
+  - removed overlapping sprites
+  - prevented placement on roads
+  - avoided shop overlap
+- Filled all empty map regions for visual completeness
+- Ensured consistent spacing across entire map
+- Fixed rendering issues:
+  - removed duplicate/ghost sprites
+  - resolved incorrect draw layering
+- Removed all debug text from `FirstScreen`
+- Cleaned rendering pipeline to show only gameplay elements
+
+---
+
+## Current State
+- Fully playable round-based simulation
+- Complete UI system (menus + summary tab)
+- Adaptive rival AI
+- Customer movement and shop interaction
+- Fully populated static map
+- Clean presentation with no debug dependency
 ---
 
 ## Future Improvements
