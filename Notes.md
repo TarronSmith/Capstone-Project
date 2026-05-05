@@ -6,13 +6,14 @@
 - Implemented Customer model
 - Implemented Shop model
 - Implemented DecisionLogic (customer purchase behavior)
-Core models should be finished now. My next goal is to build a simulation engine to help with debugging
+
+Core models should be finished now. Next goal is to build a simulation engine to help with debugging.
 
 ### Simulation Engine
 - Built MarketPlan (fixed customer distribution)
 - Built CustomerSpawner (visual and logical customer flow)
 - Built RivalAI (inventory strategy based on demand)
-- Built RoundManager (BUY -> SELL -> RESULTS phase control)
+- Built RoundManager (BUY → SELL → RESULTS phase control)
 
 ### UI Integration
 - Connected simulation to LibGDX via FirstScreen
@@ -21,98 +22,317 @@ Core models should be finished now. My next goal is to build a simulation engine
 - Displayed inventory, demand, and revenue statistics
 
 ### Milestone Completion
-- Demo is running the way I want. Stats are matching initial values. AI shows simple adaptablity
-- Went back and cleaned up and refractored some of the code
+- Demo is running as expected
+- Stats are matching initial values
+- AI shows simple adaptability
+- Cleaned up and refactored some code
+
+---
 
 ## 2/10 – 2/17
 
 ### Multi-Item System
-- Reworked the earlier demo implementation that supported only two items.
-- Implemented an ItemCatalog system that defines the complete set of items available in the market. Inventory and purchasing logic now reference catalog items rather than hardcoded item types.
+- Reworked demo that originally supported only two items
+- Implemented ItemCatalog to define full market item set
+- Updated inventory and purchasing logic to reference catalog items
+
 Updated MarketEngine to support:
 - dynamic catalog item selection
 - multi-item inventory handling
-- vendor cost lookup through the catalog
+- vendor cost lookup through catalog
 
 ### Demand Tracking
-- Extended RoundManager to track per-item market activity.
-Added structures to record:
-- desired items during the Sell Phase
-- sold items during the Sell Phase
-These statistics persist between rounds and provide information for analytics and AI decisions.
+- Extended RoundManager to track per-item activity
+
+Added:
+- desired items during Sell Phase
+- sold items during Sell Phase
+
+These persist between rounds and feed into AI + analytics.
 
 ### System Cleanup
-- Removed early demo logic tied to fixed item assumptions.
-- Refactored several simulation classes so the market can scale to any number of items without changing game logic.
+- Removed hardcoded item assumptions
+- Refactored simulation classes for scalability
 
-## 2/17 - 2/24
+---
 
-## Rival AI Upgrade
-- Improved RivalAI stocking behavior using demand-based heuristics.
-The AI now:
-- Reads demand data from the previous round
-- Buys at least one unit of each demanded item (exploration)
-- Spends remaining cash using a greedy scoring approach
+## 2/17 – 2/24
+
+### Rival AI Upgrade
+- Improved RivalAI stocking behavior using demand heuristics
+
+AI now:
+- reads previous round demand
+- buys at least one unit of demanded items
+- spends remaining cash greedily
 
 Scoring heuristic:
 score = demandShare * (price / vendorCost)
-This prioritizes items that are both profitable and frequently requested by customers.
 
-## UI Improvements
-Updated the HUD to support:
-- dynamic catalog display
-- per-item demand statistics
-- per-item sales statistics
-Removed UI elements tied to the earlier two-item prototype.
+This prioritizes:
+- high demand
+- high profit margin
 
-## Code Refactoring
-Performed a cleanup across the codebase
+### UI Improvements
+- Updated HUD to support:
+  - dynamic catalog display
+  - per-item demand stats
+  - per-item sales stats
+- Removed early prototype UI assumptions
 
-- Added responsibility comments to simulation classes
-- Reorganized package structure for clarity
-- Removed unused demo references
-- Standardized naming conventions
-
-## Milestone Completion
-The simulation now supports a fully dynamic item system and improved AI stocking behavior.
-
-## 2/24 - 3/3
-### Round-Based Game Loop
-Implemented a finite round system for gameplay.
-
-RoundManager now tracks:
-- current round number
-- maximum number of rounds
-- game outcome conditions
-
-Each round follows the phase order:
-BUY → SELL → RESULTS
-Revenue from each Sell Phase is transferred into the shop’s cash balance during the Results phase.
-
-### Game Over System
-Implemented a GameOverScreen that activates when the final round completes.
-The system determines the result using final wallet values:
-- WIN – player has more money than riva
-- LOSS – rival has more money
-- TIE – both wallets equal
-A restart option resets the session state.
-
-### HUD Updates
-Updated the HUD to display:
-- current round (Round X / Max)
-- player and rival cash
-- updated statistics after each round
-
-### Engine Integration
-Updated interactions between:
-- MarketEngine
-- RoundManager
-- HUD rendering
-to ensure correct phase transitions and accurate revenue accounting.
+### Code Refactoring
+- Added responsibility comments
+- Cleaned package structure
+- Removed unused demo logic
+- Standardized naming
 
 ### Milestone Completion
-The game now has a complete playable loop with:
-- multi-round gameplay
-- better AI competition
-- win/loss conditions
-- updated HUD
+- Fully dynamic item system working
+- AI responding to demand correctly
+
+---
+
+## 2/24 – 3/3
+
+### Round-Based Game Loop
+- Implemented finite round system
+
+RoundManager now tracks:
+- current round
+- max rounds
+- game outcome conditions
+
+Each round:
+BUY → SELL → RESULTS
+
+Revenue applied during RESULTS phase.
+
+### Game Over System
+- Implemented GameOverScreen
+
+End conditions:
+- WIN (player > rival)
+- LOSS (rival > player)
+- TIE
+
+Restart resets session.
+
+### HUD Updates
+- Added:
+  - round display
+  - player/rival cash
+  - updated round stats
+
+### Engine Integration
+- Synced:
+  - MarketEngine
+  - RoundManager
+  - HUD rendering
+
+Ensured:
+- correct phase transitions
+- accurate revenue handling
+
+### Milestone Completion
+- Full playable loop achieved
+
+---
+
+## 3/3 – 3/10
+
+### Customer Movement System
+- Expanded CustomerSpawner into full movement system
+
+Customers now:
+- spawn from either side
+- walk along road
+- enter shops via entrances
+- disappear inside shop
+- wait briefly (simulate shopping)
+- exit map
+
+### Behavior Improvements
+- Added logic for visiting second shop if needed
+- Improved spacing between customers
+- Aligned movement visually to road
+
+---
+
+## 3/10 – 3/17
+
+### Tile Map System
+- Created TileMap class
+- Added:
+  - grass tiles
+  - road tiles
+  - entrance paths
+  - vegetation layer
+
+### Rendering Changes
+- Replaced tile-built shops with sprite-based shops
+- Added separate player + rival shop sprites
+- Updated FirstScreen rendering order
+
+### Visual Consistency
+- Fixed scaling issues
+- Ensured pixel-art consistency
+
+---
+
+## 3/17 – 3/24
+
+### Buy Menu UI
+- Created BuyMenuUI
+
+Added:
+- order panel
+- inventory panel
+- BUY buttons
+
+### UI Rendering
+- Integrated pixel font (pxfntfree9-8x10)
+- Implemented text rendering system
+
+### Formatting Fixes
+- Adjusted:
+  - item naming (shortened)
+  - cost display
+  - spacing/alignment
+- Fixed button positioning issues
+
+---
+
+## 3/24 – 3/31
+
+### Round Summary UI
+- Created RoundSummaryTabUI
+
+Top tab displays:
+- phase
+- round
+- wallet
+
+Expandable panel shows:
+- top desired
+- top sold
+- spent
+- revenue
+- profit
+- items sold
+
+### Data Tracking
+- Extended RoundManager:
+  - spending tracking
+  - revenue tracking
+  - profit calculation
+  - demand persistence
+
+### UI Fixes
+- Implemented text wrapping
+- Fixed overflow issues
+- Stabilized phase display
+
+---
+
+## 3/31 – 4/7
+
+### Debug Cleanup
+- Removed debug HUD clutter
+- Focused screen on actual gameplay UI
+
+### Map Polish
+- Expanded vegetation placement
+- Eliminated:
+  - overlapping sprites
+  - blocked entrances
+  - empty map regions
+
+### Visual Improvements
+- Balanced top vs bottom map density
+- Improved overall scene readability
+
+---
+
+## 4/7 – 4/14
+
+### System Stability
+- Fixed phase transition issues:
+  - eliminated rapid BUY/SELL switching
+- Stabilized SELL → RESULTS transition
+
+### Integration
+- Finalized interaction between:
+  - RoundManager
+  - BuyMenuUI
+  - RoundSummaryTabUI
+
+### Validation
+- Verified correctness of:
+  - spending
+  - revenue
+  - profit
+  - demand tracking
+
+---
+
+## 4/14 – 4/21
+
+### UI Stabilization
+- Finalized BuyMenuUI layout and interaction
+- Fixed inventory mismatch bug
+
+### Money Formatting
+- Added:
+  - decimal support
+  - dollar symbol
+- Fixed sprite font spacing issues
+
+### UI Layout Fixes
+- Anchored menus correctly
+- Fixed layering (panels vs buttons)
+- Corrected text alignment
+
+---
+
+## 4/21 – 4/28
+
+### Round Summary Finalization
+- Completed RoundSummaryTabUI behavior
+
+Added:
+- full analytics display
+- correct formatting of stats
+- proper wrapping of items sold list
+
+### Bug Fixes
+- Fixed overflow issues
+- Fixed incorrect stat values
+- Cleaned up formatting inconsistencies
+
+---
+
+## 4/28 – 5/5
+
+### Map Finalization
+- Completed static TileMap layout
+
+### Vegetation Placement
+- Removed:
+  - plant overlap
+  - road overlap
+  - shop overlap
+- Evenly distributed vegetation across map
+- Filled all empty areas
+
+### Rendering Fixes
+- Removed ghost/double-rendered sprites
+- Fixed persistent draw issues
+
+### Debug Removal
+- Removed all debug text from FirstScreen
+
+### Final State
+- Game is now:
+  - fully playable
+  - visually complete
+  - UI-driven (no debug dependency)
