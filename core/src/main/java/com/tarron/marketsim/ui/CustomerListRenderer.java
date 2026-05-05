@@ -17,10 +17,10 @@ import com.tarron.marketsim.simulation.RoundManager;
  * - Renders per-customer status lines beneath each shop during BUY/SELL/RESULTS.
  *
  * Rules:
- * - Customers are grouped by targetShop.
+ * - Customers are grouped by current shop context.
  * - BUY phase: "idle..."
- * - SELL phase (not arrived): "walking..."
- * - After arrival: prints wallet before/after and purchase result.
+ * - SELL phase: state-specific movement / inside-shop / exit text
+ * - After the full flow finishes: prints wallet before/after and purchase result
  *
  * Notes:
  * - UI only; reads VisualCustomer state and RoundManager phase.
@@ -56,10 +56,14 @@ public class CustomerListRenderer {
 				CustomerSpawner.VisualCustomer vc = crowd.get(i);
 				String line = buildLine(roundManager, i, vc);
 
-				if (vc != null && vc.targetShop == playerShop) {
+				Shop listShop = shopContextForList(vc);
+
+				if (listShop == playerShop) {
 					playerLines.add(line);
-				} else {
+				} else if (listShop == rivalShop) {
 					rivalLines.add(line);
+				} else {
+					playerLines.add(line);
 				}
 			}
 		}
@@ -88,23 +92,57 @@ public class CustomerListRenderer {
 	}
 
 	// ============================================================
+	// Grouping helpers
+	// ============================================================
+
+	private Shop shopContextForList(CustomerSpawner.VisualCustomer vc) {
+		if (vc == null) return null;
+		if (vc.currentShop != null) return vc.currentShop;
+		if (vc.firstShop != null) return vc.firstShop;
+		return null;
+	}
+
+	// ============================================================
 	// Line formatting
 	// ============================================================
 
-	/**
-	 * Formats one line of UI text for a customer entry.
-	 */
 	private String buildLine(RoundManager rm, int index, CustomerSpawner.VisualCustomer vc) {
 		if (vc == null) return "C" + index + ": null";
 
-		if (vc.purchaseResult == null) {
-			boolean inBuy = (rm != null && rm.getPhase() == RoundManager.Phase.BUY);
-			return inBuy
-					? ("C" + index + ": idle...")
-							: ("C" + index + ": walking...");
+		boolean inBuy = (rm != null && rm.getPhase() == RoundManager.Phase.BUY);
+
+		if (inBuy) {
+			return "C" + index + ": idle...";
 		}
 
-		String itemLabel = (vc.boughtName == null) ? "no buy" : vc.boughtName;
+		switch (vc.state) {
+		case WALK_TO_FIRST_SHOP:
+			return "C" + index + ": walking to first shop...";
+
+		case INSIDE_FIRST_SHOP:
+			return "C" + index + ": inside first shop...";
+
+		case WALK_TO_SECOND_SHOP:
+			return "C" + index + ": walking to second shop...";
+
+		case INSIDE_SECOND_SHOP:
+			return "C" + index + ": inside second shop...";
+
+		case EXITING:
+			return "C" + index + ": leaving...";
+
+		case DONE:
+			return buildFinishedLine(index, vc);
+
+		default:
+			return "C" + index + ": active...";
+		}
+	}
+
+	private String buildFinishedLine(int index, CustomerSpawner.VisualCustomer vc) {
+		String resultLabel = (vc.purchaseResult == null || vc.purchaseResult.isBlank())
+				? "no result"
+						: vc.purchaseResult;
 
 		return String.format(
 				"C%d: Initial=$%.2f  Spent=$%.2f  Final=$%.2f  (%s)",
@@ -112,7 +150,7 @@ public class CustomerListRenderer {
 				vc.walletBefore,
 				vc.spent,
 				vc.walletAfter,
-				itemLabel
+				resultLabel
 				);
 	}
 
@@ -120,10 +158,6 @@ public class CustomerListRenderer {
 	// Rendering helpers
 	// ============================================================
 
-	/**
-	 * Draws a vertical list of customer lines under a shop.
-	 * Limits output to avoid overflowing the UI region.
-	 */
 	private void drawShopCustomerList(
 			BitmapFont font,
 			GlyphLayout layout,

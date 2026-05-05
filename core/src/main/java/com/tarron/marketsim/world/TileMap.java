@@ -240,24 +240,65 @@ public class TileMap {
 	 */
 	private void buildDefaultVegetation() {
 		decorations.clear();
-
-		/*
-		 * Left side, behind / around player shop
-		 */
-		addDecorationScaled(0, 9, bushA);
-		addDecorationScaled(9, 9, bushB);
-
-		addDecorationScaled(0, 12, weedsA);
-		addDecorationScaled(1, 12, weedsB);
-
-		addDecorationScaled(8, 10, flowerPinkA);
-		addDecorationScaled(9, 10, flowerPinkB);
-
-		addDecorationScaled(15, 10, tallPlantA);
-		addDecorationScaled(16, 10, tallPlantB);
-
-		addDecorationScaled(3, 10, stickA);
-		addDecorationScaled(16, 15, stickB);
+		addDecorationScaled(0, 16, weedsB, 0f, 0f);
+		addDecorationScaled(2, 16, tallPlantA, 0f, 0f);
+		addDecorationScaled(4, 16, flowerPinkA, 0f, 0f);
+		addDecorationScaled(6, 15, weedsA, 0f, 0f);
+		addDecorationScaled(8, 16, bushA, 0f, 0f);
+		addDecorationScaled(10, 15, tallPlantB, 0f, 0f);
+		addDecorationScaled(12, 16, flowerPinkB, 0f, 0f);
+		addDecorationScaled(14, 15, weedsB, 0f, 0f);
+		addDecorationScaled(16, 16, bushB, -6f, 0f);
+		addDecorationScaled(18, 15, tallPlantA, 0f, 0f);
+		addDecorationScaled(20, 16, flowerPinkA, 0f, 0f);
+		addDecorationScaled(22, 15, weedsA, 0f, 0f);
+		addDecorationScaled(24, 16, tallPlantB, -8f, 0f);
+		addDecorationScaled(0, 14, bushA, -4f, 0f);
+		addDecorationScaled(2, 14, bushB, -4f, 0f);
+		addDecorationScaled(0, 12, tallPlantA, 0f, 0f);
+		addDecorationScaled(2, 12, weedsA, 0f, 0f);
+		addDecorationScaled(1, 10, flowerPinkA, 0f, 0f);
+		addDecorationScaled(9, 14, flowerPinkB, 0f, 0f);
+		addDecorationScaled(11, 14, bushA, 0f, 0f);
+		addDecorationScaled(13, 14, tallPlantB, 0f, 0f);
+		addDecorationScaled(9, 12, weedsB, 0f, 0f);
+		addDecorationScaled(11, 12, flowerPinkA, 0f, 0f);
+		addDecorationScaled(13, 12, bushB, -6f, 0f);
+		addDecorationScaled(15, 12, weedsA, 0f, 0f);
+		addDecorationScaled(15, 14, flowerPinkB, 0f, 0f);
+		addDecorationScaled(16, 11, tallPlantA, 0f, 0f);
+		addDecorationScaled(16, 13, weedsB, 0f, 0f);
+		addDecorationScaled(23, 14, bushA, -4f, 0f);
+		addDecorationScaled(24, 12, tallPlantB, -8f, 0f);
+		addDecorationScaled(23, 10, flowerPinkA, 0f, 0f);
+		addDecorationScaled(24, 14, bushB, -16f, 0f);
+		addDecorationScaled(2, 9, flowerPinkB, 0f, 0f);
+		addDecorationScaled(15, 9, weedsA, 0f, 0f);
+		addDecorationScaled(16, 9, flowerPinkA, 0f, 0f);
+		addDecorationScaled(4, 6, stickA, 0f, 0f);
+		addDecorationScaled(10, 6, flowerPinkA, 0f, 0f);
+		addDecorationScaled(14, 6, stickB, 0f, 0f);
+		addDecorationScaled(20, 6, flowerPinkB, 0f, 0f);
+		addDecorationScaled(0, 3, bushA, -4f, 0f);
+		addDecorationScaled(2, 4, weedsA, 0f, 0f);
+		addDecorationScaled(4, 3, flowerPinkA, 0f, 0f);
+		addDecorationScaled(1, 1, tallPlantA, 0f, 0f);
+		addDecorationScaled(5, 1, stickB, 0f, 0f);
+		addDecorationScaled(7, 4, flowerPinkB, 0f, 0f);
+		addDecorationScaled(9, 2, weedsB, 0f, 0f);
+		addDecorationScaled(10, 5, tallPlantB, 0f, 0f);
+		addDecorationScaled(11, 3, bushB, -6f, 0f);
+		addDecorationScaled(13, 1, flowerPinkA, 0f, 0f);
+		addDecorationScaled(14, 4, weedsA, 0f, 0f);
+		addDecorationScaled(15, 2, stickA, 0f, 0f);
+		addDecorationScaled(16, 5, bushA, 0f, 0f);
+		addDecorationScaled(18, 3, flowerPinkB, 0f, 0f);
+		addDecorationScaled(19, 5, weedsB, 0f, 0f);
+		addDecorationScaled(20, 1, tallPlantA, 0f, 0f);
+		addDecorationScaled(21, 4, bushB, -6f, 0f);
+		addDecorationScaled(23, 3, weedsA, 0f, 0f);
+		addDecorationScaled(24, 1, flowerPinkA, -8f, 0f);
+		addDecorationScaled(22, 1, stickB, 0f, 0f);
 	}
 
 	// ============================================================
