@@ -47,10 +47,10 @@ public class ItemCatalog {
 	 */
 	public ItemCatalog() {
 		add("Bargain",       2.0, 0, 1.2);
-		add("CheapItem",     3.0, 1, 2.0);
+		add("Cheap",     3.0, 1, 2.0);
 		add("Decent",        5.0, 3, 3.2);
 		add("Quality",       6.5, 4, 4.2);
-		add("ExpensiveItem", 8.0, 5, 5.0);
+		add("Expensive", 8.0, 5, 5.0);
 		add("Luxury",       12.0, 7, 8.0);
 	}
 

@@ -11,12 +11,6 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
  * - Builds a tile-based shop house using the Pixel Crawler building assets.
  * - Anchors the building to a tile coordinate from TileMap.
  * - Layers wall, roof, door, and window regions into one composed structure.
- *
- * Notes:
- * - This version avoids the earlier "cut up" roof look by using the regular
- *   roof tile texture as a continuous roof surface.
- * - Door and windows are overlaid as larger prop regions instead of trying to
- *   fake them with one 16x16 tile.
  */
 public class ShopBuilding {
 
@@ -60,7 +54,7 @@ public class ShopBuilding {
 	// ============================================================
 
 	/*
-	 * Bottom-left tile of the building footprint.
+	 * Bottom-left tile of the building.
 	 */
 	private final int tileX;
 	private final int tileY;
@@ -85,9 +79,6 @@ public class ShopBuilding {
 
 	/*
 	 * Overlay props
-	 *
-	 * These are larger than 16x16 and are extracted manually because props in
-	 * the sheet span multiple tiles.
 	 */
 	private TextureRegion doorRegion;
 	private TextureRegion windowLeftRegion;
@@ -130,32 +121,17 @@ public class ShopBuilding {
 		/*
 		 * Wall choice:
 		 * Uses the plaster wall section from the middle set of the Walls sheet.
-		 * This reads much more like a proper building front than the horizontal plank
-		 * strip that was previously used.
 		 */
 		wallRegion = wallGrid[0][8];
 
 		/*
 		 * Roof choice:
 		 * Uses a regular brown roof shingle tile from Roofs.png.
-		 *
-		 * This fixes the earlier issue where a triangular/edge piece was repeated
-		 * across the whole roof, which made the roof look sliced apart.
 		 */
 		roofRegion = roofGrid[1][1];
 
 		/*
 		 * Prop overlays from Props.png
-		 *
-		 * These are extracted manually because they span multiple source tiles.
-		 *
-		 * Door:
-		 * - a 2x2 tile wooden door from the top portion of the props sheet
-		 *
-		 * Windows:
-		 * - two 2x2 blue windows from the middle-left portion of the props sheet
-		 *
-		 * Coordinates are given in source pixels.
 		 */
 		doorRegion = new TextureRegion(propsTexture, 8 * 16, 0 * 16, 2 * 16, 2 * 16);
 
@@ -249,8 +225,6 @@ public class ShopBuilding {
 
 	/**
 	 * Entrance tile is the tile directly in front of the centered door.
-	 *
-	 * This will be used later to connect the path from TileMap to the building.
 	 */
 	public int getEntranceTileX() {
 		return tileX + 2;
