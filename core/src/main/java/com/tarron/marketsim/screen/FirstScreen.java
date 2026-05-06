@@ -25,32 +25,20 @@ import com.tarron.marketsim.world.TileMap;
  * Responsibilities:
  * - Main gameplay screen.
  * - Handles input mapping and delegates gameplay actions to MarketEngine.
- * - Renders the tile map, shop houses, customers, and gameplay UI.
+ * - Renders the tile map, shop houses, customers, shop labels, and gameplay UI.
  * - Switches to GameOverScreen when the session ends.
  */
 public class FirstScreen implements Screen {
-
-	// ============================================================
-	// Session settings
-	// ============================================================
 
 	private static final int INITIAL_CUSTOMERS = 20;
 	private static final int MIN_CUSTOMERS = 2;
 	private static final int MAX_CUSTOMERS = 60;
 	private static final double STARTING_CASH = 20.0;
 
-	// ============================================================
-	// Viewport
-	// ============================================================
-
 	private static final float SCREEN_W = 800f;
 	private static final float SCREEN_H = 600f;
 
 	private static final float CUSTOMER_RADIUS = 10f;
-
-	// ============================================================
-	// Customer sprite sheet settings
-	// ============================================================
 
 	private static final String CUSTOMER_SHEET_PATH =
 			"sprites/humanoid/Basic Humanoid Sprites 2x.png";
@@ -64,10 +52,6 @@ public class FirstScreen implements Screen {
 	private static final int CUSTOMER_SPACING_X = 4;
 	private static final int CUSTOMER_SPACING_Y = 4;
 
-	// ============================================================
-	// House sprite settings
-	// ============================================================
-
 	private static final String PLAYER_SHOP_PATH =
 			"Pixel Crawler - Free Pack/Environment/Structures/Custom/House-1.png";
 
@@ -76,10 +60,6 @@ public class FirstScreen implements Screen {
 
 	private static final float HOUSE_DRAW_W = 160f;
 	private static final float HOUSE_DRAW_H = 160f;
-
-	// ============================================================
-	// Layout
-	// ============================================================
 
 	private float playerX;
 	private float playerY;
@@ -91,13 +71,10 @@ public class FirstScreen implements Screen {
 	private float rivalHouseDrawX;
 	private float rivalHouseDrawY;
 
-	// ============================================================
-	// Rendering
-	// ============================================================
-
 	private OrthographicCamera camera;
 	private SpriteBatch batch;
 
+	private BitmapFont fontMain;
 	private BitmapFont fontSmall;
 
 	private Texture customerSheet;
@@ -106,10 +83,6 @@ public class FirstScreen implements Screen {
 	private TileMap tileMap;
 	private Texture playerHouseTexture;
 	private Texture rivalHouseTexture;
-
-	// ============================================================
-	// Simulation + UI
-	// ============================================================
 
 	private MarketEngine engine;
 	private BuyMenuUI buyMenuUI;
@@ -127,6 +100,9 @@ public class FirstScreen implements Screen {
 		camera.setToOrtho(false, (int) SCREEN_W, (int) SCREEN_H);
 
 		batch = new SpriteBatch();
+
+		fontMain = new BitmapFont();
+		fontMain.getData().setScale(1.1f);
 
 		fontSmall = new BitmapFont();
 		fontSmall.getData().setScale(0.65f);
@@ -207,10 +183,6 @@ public class FirstScreen implements Screen {
 		drawUI();
 		batch.end();
 	}
-
-	// ============================================================
-	// Input
-	// ============================================================
 
 	private void handleGlobalKeys() {
 		if (Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.R)) {
@@ -311,10 +283,6 @@ public class FirstScreen implements Screen {
 				);
 	}
 
-	// ============================================================
-	// Drawing
-	// ============================================================
-
 	private void clearScreen() {
 		Gdx.gl.glClearColor(0.08f, 0.08f, 0.10f, 1f);
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -335,6 +303,22 @@ public class FirstScreen implements Screen {
 
 		if (rivalHouseTexture != null) {
 			batch.draw(rivalHouseTexture, rivalHouseDrawX, rivalHouseDrawY, HOUSE_DRAW_W, HOUSE_DRAW_H);
+		}
+
+		if (fontMain != null) {
+			fontMain.draw(
+					batch,
+					"Player Shop",
+					playerHouseDrawX + 18f,
+					playerHouseDrawY + HOUSE_DRAW_H + 16f
+					);
+
+			fontMain.draw(
+					batch,
+					"Rival Shop",
+					rivalHouseDrawX + 24f,
+					rivalHouseDrawY + HOUSE_DRAW_H + 16f
+					);
 		}
 
 		for (CustomerSpawner.VisualCustomer vc : crowd) {
@@ -367,10 +351,6 @@ public class FirstScreen implements Screen {
 			buyMenuUI.render(batch, fontSmall, engine);
 		}
 	}
-
-	// ============================================================
-	// Sprite helpers
-	// ============================================================
 
 	private TextureRegion[] buildCustomerSprites(Texture sheet) {
 		if (sheet == null) return new TextureRegion[0];
@@ -409,10 +389,6 @@ public class FirstScreen implements Screen {
 		return customerSprites[idx];
 	}
 
-	// ============================================================
-	// Screen lifecycle
-	// ============================================================
-
 	@Override
 	public void resize(int width, int height) {
 		if (width <= 0 || height <= 0) return;
@@ -425,6 +401,7 @@ public class FirstScreen implements Screen {
 	@Override
 	public void dispose() {
 		if (batch != null) batch.dispose();
+		if (fontMain != null) fontMain.dispose();
 		if (fontSmall != null) fontSmall.dispose();
 		if (customerSheet != null) customerSheet.dispose();
 		if (playerHouseTexture != null) playerHouseTexture.dispose();

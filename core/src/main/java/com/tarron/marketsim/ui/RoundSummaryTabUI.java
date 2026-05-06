@@ -19,13 +19,9 @@ import com.tarron.marketsim.simulation.MarketEngine;
  *
  * Responsibilities:
  * - Renders a top-center round summary tab.
- * - Shows current round and player cash while collapsed.
+ * - Shows phase, round number, player cash, and rival cash while collapsed.
  * - Expands into a summary panel when clicked.
  * - Displays last-round summary information.
- *
- * Notes:
- * - Phase display removed from tab to prevent visual instability.
- * - All simulation data is pulled from RoundManager.
  */
 public class RoundSummaryTabUI {
 
@@ -38,13 +34,13 @@ public class RoundSummaryTabUI {
 
 	private static final String FONT_CHARS =
 			"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-					"abcdefghijklmnopqrstuvwxyz" +
-					"0123456789.$";
+			"abcdefghijklmnopqrstuvwxyz" +
+			"0123456789.$";
 
 	private static final float SCREEN_W = 800f;
 	private static final float SCREEN_H = 600f;
 
-	private static final float TAB_W = 260f;
+	private static final float TAB_W = 320f;
 	private static final float TAB_H = 34f;
 	private static final float TAB_X = (SCREEN_W - TAB_W) / 2f;
 	private static final float TAB_Y = SCREEN_H - TAB_H;
@@ -54,7 +50,7 @@ public class RoundSummaryTabUI {
 	private static final float PANEL_X = (SCREEN_W - PANEL_W) / 2f;
 	private static final float PANEL_Y = TAB_Y - PANEL_H - 6f;
 
-	private static final float TITLE_SCALE = 1.3f;
+	private static final float TITLE_SCALE = 1.25f;
 	private static final float TEXT_SCALE = 1.1f;
 	private static final float SMALL_TEXT_SCALE = 1.0f;
 
@@ -126,10 +122,11 @@ public class RoundSummaryTabUI {
 
 		String text =
 				getDisplayPhase(engine) +
-				"  ROUND " + getCurrentRound(engine) +
-				"  $" + formatMoney(getPlayerCash(engine));
+				" R" + getCurrentRound(engine) +
+				" P$" + formatMoney(getPlayerCash(engine)) +
+				" V$" + formatMoney(getRivalCash(engine));
 
-		drawPixelText(batch, text, tabBounds.x + 28f, tabBounds.y + 9f, TITLE_SCALE);
+		drawPixelText(batch, text, tabBounds.x + 18f, tabBounds.y + 9f, TITLE_SCALE);
 	}
 
 	private void drawExpandedPanel(SpriteBatch batch, MarketEngine engine) {
@@ -172,7 +169,20 @@ public class RoundSummaryTabUI {
 		}
 	}
 
-	// ---------- Data Helpers ----------
+	private String getDisplayPhase(MarketEngine engine) {
+		Object rm = engine.getRoundManager();
+		String phase = tryString(rm, "getPhase");
+
+		if (phase == null || phase.isBlank()) {
+			return "BUY";
+		}
+
+		if (phase.equals("SELL") || phase.equals("RESULTS")) {
+			return "SELL";
+		}
+
+		return "BUY";
+	}
 
 	private int getCurrentRound(MarketEngine engine) {
 		Object rm = engine.getRoundManager();
@@ -186,16 +196,22 @@ public class RoundSummaryTabUI {
 		return v == null ? 0.0 : v;
 	}
 
+	private double getRivalCash(MarketEngine engine) {
+		Object rm = engine.getRoundManager();
+		Double v = tryDouble(rm, "getRivalCash");
+		return v == null ? 0.0 : v;
+	}
+
 	private String getLastTopDesired(MarketEngine engine) {
 		Object rm = engine.getRoundManager();
 		String v = tryString(rm, "getLastTopDesired");
-		return v == null || v.isBlank() ? "None" : v;
+		return v == null || v.isBlank() ? "None" : shortItemName(v);
 	}
 
 	private String getLastTopSold(MarketEngine engine) {
 		Object rm = engine.getRoundManager();
 		String v = tryString(rm, "getLastTopSold");
-		return v == null || v.isBlank() ? "None" : v;
+		return v == null || v.isBlank() ? "None" : shortItemName(v);
 	}
 
 	private double getLastSpent(MarketEngine engine) {
@@ -218,7 +234,10 @@ public class RoundSummaryTabUI {
 
 	private List<String> getLastSoldItemsLines(MarketEngine engine) {
 		Object rm = engine.getRoundManager();
-		Object map = tryObject(rm, "getLastSoldByItemName");
+
+		Object map =
+				tryObject(rm, "getLastSoldByItemName") != null ? tryObject(rm, "getLastSoldByItemName") :
+				tryObject(rm, "getLastSoldCounts");
 
 		List<String> lines = new ArrayList<>();
 		if (!(map instanceof Map<?, ?>)) return lines;
@@ -226,7 +245,9 @@ public class RoundSummaryTabUI {
 		StringBuilder current = new StringBuilder();
 
 		for (Map.Entry<?, ?> e : ((Map<?, ?>) map).entrySet()) {
-			String part = e.getKey() + "x" + e.getValue();
+			if (e.getKey() == null || e.getValue() == null) continue;
+
+			String part = shortItemName(e.getKey().toString()) + "x" + e.getValue();
 
 			String test = current.length() == 0 ? part : current + " " + part;
 
@@ -244,24 +265,18 @@ public class RoundSummaryTabUI {
 		return lines;
 	}
 
-	private String getDisplayPhase(MarketEngine engine) {
-		Object rm = engine.getRoundManager();
-		String phase = tryString(rm, "getPhase");
+	private String shortItemName(String name) {
+		if (name == null) return "";
 
-		if (phase == null || phase.isBlank()) {
-			return "BUY";
+		if (name.endsWith("Item")) {
+			return name.substring(0, name.length() - "Item".length());
 		}
 
-		if (phase.equals("SELL") || phase.equals("RESULTS")) {
-			return "SELL";
-		}
-
-		return "BUY";
+		return name;
 	}
 
-	// ---------- Rendering Helpers ----------
-
 	private float estimateWidth(String text) {
+		if (text == null) return 0f;
 		return text.length() * FONT_CHAR_W * SMALL_TEXT_SCALE;
 	}
 
@@ -270,6 +285,8 @@ public class RoundSummaryTabUI {
 	}
 
 	private void drawPixelText(SpriteBatch batch, String text, float x, float y, float scale) {
+		if (text == null || text.isEmpty()) return;
+
 		float cursor = x;
 		float w = FONT_CHAR_W * scale;
 		float h = FONT_CHAR_H * scale;
@@ -279,8 +296,13 @@ public class RoundSummaryTabUI {
 				cursor += w;
 				continue;
 			}
+
 			TextureRegion r = regionForChar(c);
-			if (r != null) batch.draw(r, cursor, y, w, h);
+
+			if (r != null) {
+				batch.draw(r, cursor, y, w, h);
+			}
+
 			cursor += w;
 		}
 	}
@@ -292,14 +314,21 @@ public class RoundSummaryTabUI {
 		int col = i % FONT_COLS;
 		int row = i / FONT_COLS;
 
-		return new TextureRegion(fontTexture, col * FONT_CHAR_W, row * FONT_CHAR_H, FONT_CHAR_W, FONT_CHAR_H);
+		return new TextureRegion(
+				fontTexture,
+				col * FONT_CHAR_W,
+				row * FONT_CHAR_H,
+				FONT_CHAR_W,
+				FONT_CHAR_H
+				);
 	}
 
-	// ---------- Reflection Helpers ----------
-
 	private Object tryObject(Object t, String m) {
+		if (t == null || m == null) return null;
+
 		try {
-			return t.getClass().getMethod(m).invoke(t);
+			Method method = t.getClass().getMethod(m);
+			return method.invoke(t);
 		} catch (Exception e) {
 			return null;
 		}
@@ -321,7 +350,7 @@ public class RoundSummaryTabUI {
 	}
 
 	public void dispose() {
-		panelTexture.dispose();
-		fontTexture.dispose();
+		if (panelTexture != null) panelTexture.dispose();
+		if (fontTexture != null) fontTexture.dispose();
 	}
 }

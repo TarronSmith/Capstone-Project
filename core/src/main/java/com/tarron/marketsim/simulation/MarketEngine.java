@@ -124,7 +124,7 @@ public class MarketEngine {
 
 		this.marketPlan = new MarketPlan(maxCustomers, new CustomerProfileGenerator());
 		this.rivalAI = new RivalAI();
-		this.roundManager = new RoundManager(startingCash, 10);
+		this.roundManager = new RoundManager(startingCash, 3);
 	}
 
 	// ============================================================
